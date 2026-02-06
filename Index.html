@@ -1,0 +1,409 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dust</title>
+  <!-- Default favicon – replace with your own later -->
+  <link rel="icon" type="image/x-icon" href="https://www.google.com/favicon.ico">
+  <!-- Bootstrap 3.3 CDN -->
+  <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css" integrity="sha384-BVYiiSIFeK1dGmJRAkycuHAHRg32OmUcww7on3RYdg4Va+PmSTsz/K68vbdEjh4u" crossorigin="anonymous">
+  <!-- Fonts -->
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;500;700&family=Patrick+Hand&display=swap" rel="stylesheet">
+  <style>
+    body {
+      background-color: #1a1a1a;
+      color: #e0e0e0;
+      font-family: 'Cormorant Garamond', Georgia, serif;
+      font-size: 1.35rem;
+      line-height: 1.7;
+      padding: 30px 15px;
+      margin: 0;
+    }
+    .container-fluid {
+      max-width: 900px;
+      margin: 0 auto;
+    }
+    .header {
+      background-color: #222222;
+      color: #888888;
+      font-family: 'Patrick Hand', 'Bradley Hand', cursive;
+      font-size: 2.5rem;
+      padding: 15px 25px;
+      margin: -30px -15px 35px -15px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .header a, #user {
+      color: #888888;
+      text-decoration: none;
+    }
+    .header a:hover, #user:hover {
+      color: #bbbbbb;
+      cursor: pointer;
+    }
+    h2 {
+      font-family: 'Patrick Hand', 'Bradley Hand', cursive;
+      color: #999999;
+      text-align: center;
+      margin-bottom: 35px;
+      font-size: 3.3rem;
+      letter-spacing: 1px;
+    }
+    .entry {
+      margin-bottom: 0.8rem;
+      padding-bottom: 0.6rem;
+      border-bottom: 1px solid #2a2a2a;
+    }
+    .entry-date {
+      color: #bbbbbb;
+      font-size: 1.35rem;
+      margin-bottom: 0.25rem;
+      display: block;
+      font-weight: 500;
+    }
+    .entry-content {
+      white-space: pre-wrap;
+      word-wrap: break-word;
+      font-size: 1.35rem;
+    }
+    #addForm {
+      background: #222222;
+      padding: 25px;
+      border-radius: 6px;
+      margin-top: 45px;
+      border: 1px solid #333;
+    }
+    #addForm label {
+      color: #999999;
+      font-family: 'Patrick Hand', cursive;
+      font-size: 1.5rem;
+      margin-bottom: 10px;
+      display: block;
+    }
+    #date {
+      width: auto;
+      display: inline-block;
+      float: right;
+      background: #333;
+      color: #ddd;
+      border: 1px solid #444;
+      font-size: 1.2rem;
+      padding: 6px 10px;
+    }
+    textarea {
+      font-family: 'Cormorant Garamond', Georgia, serif;
+      font-size: 1.35rem;
+      background: #2a2a2a;
+      color: #f0f0f0;
+      border: 1px solid #444;
+      resize: vertical;
+      min-height: 240px;
+      width: 100%;
+      padding: 16px;
+      border-radius: 4px;
+    }
+    textarea:focus {
+      border-color: #777;
+      outline: none;
+    }
+    .btn-submit {
+      background-color: #222222;
+      color: #999999;
+      border: none;
+      font-size: 1.6rem;
+      font-family: 'Patrick Hand', cursive;
+      padding: 14px;
+      width: 100%;
+      margin-top: 20px;
+      transition: color 0.2s;
+    }
+    .btn-submit:hover {
+      color: #cccccc;
+    }
+    .btn-submit:disabled {
+      color: #555;
+    }
+    #cancelBtn {
+      background: #444 !important;
+      color: #aaa !important;
+      display: none;
+      font-size: 1.6rem;
+    }
+    #draftToast {
+      position: fixed;
+      bottom: 30px;
+      right: 30px;
+      background: rgba(40, 40, 40, 0.85);
+      color: #bbb;
+      padding: 12px 24px;
+      border-radius: 6px;
+      font-family: 'Patrick Hand', cursive;
+      font-size: 1.2rem;
+      border: 1px solid #555;
+      opacity: 0;
+      transform: translateY(20px);
+      transition: all 0.4s ease;
+      z-index: 1000;
+      pointer-events: none;
+    }
+    #draftToast.visible {
+      opacity: 1;
+      transform: translateY(0);
+    }
+    .loading, .empty-state {
+      text-align: center;
+      color: #777;
+      font-style: italic;
+      padding: 60px 0;
+    }
+    .empty-state p {
+      font-size: 1.5rem;
+    }
+    @media (max-width: 768px) {
+      body { font-size: 1.2rem; }
+      .header { font-size: 2rem; flex-direction: column; gap: 10px; }
+      h2 { font-size: 2.8rem; }
+      .entry { margin-bottom: 0.6rem; padding-bottom: 0.5rem; }
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <a href="#">Dust thou art</a>
+    <span id="user" onclick="logout()" style="cursor:pointer; text-decoration:underline;"></span>
+  </div>
+
+  <div class="container-fluid">
+    <h2>Dust Journal</h2>
+
+    <div id="entries">
+      <div class="loading">Loading your entries...</div>
+    </div>
+
+    <div id="addForm">
+      <input type="hidden" id="entryId">
+      <label>Add a date if not today <span style="float:right; font-size:1rem; color:#777;">(optional)</span></label>
+      <input type="date" id="date">
+
+      <textarea id="contents" placeholder="Do I contradict myself?&#10;Very well then I contradict myself;&#10;I am large, I contain multitudes.&#10;&#10;— Walt Whitman"></textarea>
+
+      <div class="form-actions">
+        <button id="submitBtn" class="btn btn-submit" onclick="submitEntry()">submit</button>
+        <button id="cancelBtn" class="btn btn-submit" onclick="cancelEdit()">cancel</button>
+      </div>
+    </div>
+
+    <div id="draftToast">draft saved</div>
+  </div>
+
+  <script>
+    let currentEntryId = null;
+
+    window.onload = function() {
+      google.script.run.withSuccessHandler(showUser).getUserInfo();
+      checkSpreadsheetSelection();
+    };
+
+    function showUser(info) {
+      document.getElementById('user').innerHTML = (info.name || 'Guest');
+    }
+
+    function checkSpreadsheetSelection() {
+      google.script.run
+        .withSuccessHandler(info => {
+          if (info.selected) {
+            currentEntryId = null;
+            loadEntries();
+            setupAutoSave();
+            loadDraft();
+          } else {
+            document.getElementById('entries').innerHTML = '<div class="loading" style="color:#c44;">No spreadsheet connected</div>';
+          }
+        })
+        .withFailureHandler(err => {
+          document.getElementById('entries').innerHTML = '<div class="loading" style="color:#c44;">Error connecting: ' + err.message + '</div>';
+        })
+        .getCurrentSpreadsheetInfo();
+    }
+
+    function loadEntries() {
+      document.getElementById('entries').innerHTML = '<div class="loading">Loading your entries...</div>';
+
+      google.script.run
+        .withSuccessHandler(entries => {
+          const container = document.getElementById('entries');
+          if (entries.length === 0) {
+            container.innerHTML = '<div class="empty-state"><p>No entries yet.<br>Start writing below.</p></div>';
+            return;
+          }
+          container.innerHTML = entries.map(e => `
+            <div class="entry" data-id="${e.dustId}">   <!-- use dustId here -->
+              <div class="entry-date">${escapeHtml(e.date)}</div>
+              <div class="entry-content">${escapeHtml(e.content)}</div>
+              <div style="margin-top:6px; text-align:right;">
+                <button class="btn btn-xs" style="color:#888; background:transparent; border:1px solid #555; margin-right:8px;" onclick="editEntry('${e.dustId}')">edit</button>
+                <button class="btn btn-xs" style="color:#888; background:transparent; border:1px solid #555;" onclick="deleteEntry('${e.dustId}')">delete</button>
+              </div>
+            </div>
+          `).join('');
+        })
+        .withFailureHandler(err => {
+          document.getElementById('entries').innerHTML = `<div class="loading" style="color:#c44;">Error loading entries: ${escapeHtml(err.message)}</div>`;
+        })
+        .getEntries();
+    }
+
+    function submitEntry() {
+      const contents = document.getElementById('contents').value.trim();
+      if (!contents) return showToast('Write something first', 'error');
+
+      const date = document.getElementById('date').value;
+      const id = document.getElementById('entryId').value;
+      const btn = document.getElementById('submitBtn');
+      btn.disabled = true;
+      btn.textContent = id ? 'Updating...' : 'Submitting...';
+
+      const action = id ? 'updateEntry' : 'addEntry';
+      const params = id ? [id, contents, date] : [contents, date];
+
+      google.script.run
+        .withSuccessHandler(() => {
+          document.getElementById('contents').value = '';
+          document.getElementById('date').value = '';
+          document.getElementById('entryId').value = '';
+          document.getElementById('submitBtn').textContent = 'submit';
+          document.getElementById('cancelBtn').style.display = 'none';
+          btn.disabled = false;
+          clearDraft();
+          loadEntries();
+          showToast(id ? 'Updated' : 'Saved');
+        })
+        .withFailureHandler(err => {
+          showToast('Failed — ' + err.message, 'error');
+          btn.disabled = false;
+          btn.textContent = id ? 'Update' : 'submit';
+        })
+        [action](...params);
+    }
+
+    function editEntry(dustId) {    // now receives dustId
+      google.script.run
+        .withSuccessHandler(entry => {
+          document.getElementById('entryId').value = entry.id;   // dust row number
+          document.getElementById('contents').value = entry.content;
+          document.getElementById('date').value = entry.date;
+          document.getElementById('submitBtn').textContent = 'Update';
+          document.getElementById('cancelBtn').style.display = 'inline-block';
+          document.getElementById('contents').focus();
+        })
+        .withFailureHandler(err => {
+          showToast('Failed to load entry: ' + err.message, 'error');
+        })
+        .getEntryById(dustId);
+    }
+
+    function deleteEntry(dustId) {
+      if (!confirm('Delete this entry permanently from Dust tab?')) return;
+      google.script.run
+        .withSuccessHandler(() => {
+          loadEntries();
+          showToast('Deleted');
+        })
+        .withFailureHandler(err => {
+          showToast('Delete failed: ' + err.message, 'error');
+        })
+        .deleteEntry(dustId);
+    }
+
+    function cancelEdit() {
+      document.getElementById('contents').value = '';
+      document.getElementById('date').value = '';
+      document.getElementById('entryId').value = '';
+      document.getElementById('submitBtn').textContent = 'submit';
+      document.getElementById('cancelBtn').style.display = 'none';
+      clearDraft();
+    }
+
+    function setupAutoSave() {
+      const contents = document.getElementById('contents');
+      const dateEl = document.getElementById('date');
+      const handler = () => saveDraft();
+      contents.addEventListener('input', handler);
+      dateEl.addEventListener('change', handler);
+    }
+
+    let draftTimer = null;
+    function saveDraft() {
+      clearTimeout(draftTimer);
+      draftTimer = setTimeout(() => {
+        const c = document.getElementById('contents').value.trim();
+        const d = document.getElementById('date').value;
+        const id = document.getElementById('entryId').value;
+        if (c || d || id) {
+          localStorage.setItem('draft', JSON.stringify({c, d, id}));
+          showDraftToast();
+        }
+      }, 1200);
+    }
+
+    function showDraftToast() {
+      const el = document.getElementById('draftToast');
+      el.classList.add('visible');
+      setTimeout(() => el.classList.remove('visible'), 1800);
+    }
+
+    function loadDraft() {
+      const saved = localStorage.getItem('draft');
+      if (!saved) return;
+      const {c, d, id} = JSON.parse(saved);
+      if (confirm('Restore draft?')) {
+        document.getElementById('contents').value = c || '';
+        document.getElementById('date').value = d || '';
+        document.getElementById('entryId').value = id || '';
+        if (id) {
+          document.getElementById('submitBtn').textContent = 'Update';
+          document.getElementById('cancelBtn').style.display = 'inline-block';
+        }
+      } else {
+        clearDraft();
+      }
+    }
+
+    function clearDraft() {
+      localStorage.removeItem('draft');
+    }
+
+    function showToast(msg, type = 'success') {
+      const t = document.createElement('div');
+      t.className = 'toast';
+      t.style.cssText = `
+        position:fixed; bottom:80px; left:50%; transform:translateX(-50%);
+        background:${type==='error'?'#632':'#333'}; color:#ddd; padding:12px 30px;
+        border-radius:6px; z-index:2000; font-family:'Patrick Hand',cursive;
+        opacity:0; transition:opacity 0.4s;
+      `;
+      t.textContent = msg;
+      document.body.appendChild(t);
+      setTimeout(() => { t.style.opacity=1; }, 100);
+      setTimeout(() => { t.style.opacity=0; setTimeout(()=>t.remove(),400); }, 2200);
+    }
+
+    function escapeHtml(text) {
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
+
+    function logout() {
+      if (confirm("Log out of Google account?")) {
+        window.location.href = 'https://accounts.google.com/Logout';
+      }
+    }
+
+    // Load draft on init
+    loadDraft();
+  </script>
+</body>
+</html>

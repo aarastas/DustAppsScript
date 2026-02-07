@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>Dust</title>
   <!-- Default favicon – replace with your own later -->
   <!-- Basic favicon (most browsers) -->
@@ -24,6 +24,12 @@
       line-height: 1.7;
       padding: 30px 15px;
       margin: 0;
+    }
+    button, .btn {
+      touch-action: manipulation; /* faster tap response */
+      -webkit-tap-highlight-color: transparent; /* removes blue highlight on tap */
+      min-height: 44px; /* Apple Human Interface Guidelines minimum tap target */
+      min-width: 44px;
     }
     .container-fluid {
       max-width: 900px;
@@ -166,11 +172,100 @@
     .empty-state p {
       font-size: 1.5rem;
     }
+    /* Mobile adjustments */
     @media (max-width: 768px) {
-      body { font-size: 1.2rem; }
-      .header { font-size: 2rem; flex-direction: column; gap: 10px; }
-      h2 { font-size: 2.8rem; }
-      .entry { margin-bottom: 0.6rem; padding-bottom: 0.5rem; }
+      body {
+        padding: 15px 10px;
+        font-size: 1.25rem; /* slightly smaller but still readable */
+        line-height: 1.6;
+      }
+
+      .container-fluid {
+        padding: 0 5px;
+      }
+
+      .header {
+        font-size: 2rem;
+        padding: 12px 15px;
+        flex-direction: column;
+        gap: 8px;
+        text-align: center;
+      }
+
+      h2 {
+        font-size: 2.6rem;
+        margin-bottom: 25px;
+      }
+
+      .entry {
+        margin-bottom: 1rem;
+        padding: 12px;
+        border-radius: 6px;
+        background: #222;
+        border: 1px solid #333;
+      }
+
+      .entry-date {
+        font-size: 1.2rem;
+      }
+
+      .entry-content {
+        font-size: 1.25rem;
+      }
+
+      #addForm {
+        padding: 20px 15px;
+        margin-top: 30px;
+        position: relative; /* no sticky on small screens */
+        bottom: auto;
+      }
+
+      textarea {
+        font-size: 1.25rem;
+        min-height: 200px;
+        padding: 12px;
+      }
+
+      .btn-submit {
+        font-size: 1.5rem;
+        padding: 12px;
+      }
+
+      #draftToast {
+        bottom: 20px;
+        right: 20px;
+        left: 20px;
+        right: auto;
+        width: calc(100% - 40px);
+        text-align: center;
+        font-size: 1.1rem;
+      }
+
+      /* Make edit/delete buttons easier to tap */
+      .entry-actions button {
+        padding: 8px 16px;
+        font-size: 1rem;
+        margin: 5px;
+      }
+
+      /* Fix any overflowing text */
+      .entry-content {
+        word-break: break-word;
+        overflow-wrap: break-word;
+      }
+    }
+
+    /* Very small phones (e.g. iPhone SE) */
+    @media (max-width: 480px) {
+      body {
+        font-size: 1.15rem;
+      }
+      h2 {
+        font-size: 2.2rem;
+      }
+      textarea {
+        font-size: 1.15rem;
+      }
     }
   </style>
 </head>
@@ -189,12 +284,14 @@
 
     <div id="addForm">
       <input type="hidden" id="entryId">
-      <label>Add a date if not today <span style="float:right; font-size:1rem; color:#777;">(optional)</span></label>
-      <input type="date" id="date">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+        <label style="margin:0;">Add a date if not today (optional)</label>
+        <input type="date" id="date" style="width:auto; font-size:1.1rem; padding:8px;">
+      </div>
 
-      <textarea id="contents" placeholder="Do I contradict myself?&#10;Very well then I contradict myself;&#10;I am large, I contain multitudes.&#10;&#10;— Walt Whitman"></textarea>
+      <textarea id="contents" placeholder="Do I contradict myself?..."></textarea>
 
-      <div class="form-actions">
+      <div class="form-actions" style="display:flex; gap:12px; margin-top:16px;">
         <button id="submitBtn" class="btn btn-submit" onclick="submitEntry()">submit</button>
         <button id="cancelBtn" class="btn btn-submit" onclick="cancelEdit()">cancel</button>
       </div>

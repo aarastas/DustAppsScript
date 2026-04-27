@@ -1,12 +1,11 @@
 const JOURNAL_SHEET_NAME = 'Dust';
 const SPECIAL_DATES_SHEET_NAME = 'SpecialDates';
-const SPECIAL_DATE_HEADER = ['Type', 'Label', 'Date', 'RepeatAnnually', 'RuleType', 'RuleValue', 'Enabled', 'Notes'];
+const SPECIAL_DATE_HEADER = ['Type', 'Label', 'RepeatAnnually', 'RuleType', 'RuleValue', 'Enabled'];
 const DEFAULT_SPECIAL_DATE_ROWS = [
   { type: 'Holiday', label: "New Year's Day", ruleType: 'fixed-month-day', ruleValue: '1/1', repeatAnnually: true },
   { type: 'Holiday', label: "Martin Luther King Jr. Day", ruleType: 'nth-weekday', ruleValue: '3,1,0', repeatAnnually: true },
   { type: 'Holiday', label: "Presidents' Day", ruleType: 'nth-weekday', ruleValue: '3,1,1', repeatAnnually: true },
   { type: 'Holiday', label: 'Memorial Day', ruleType: 'last-weekday', ruleValue: '1,4', repeatAnnually: true },
-  { type: 'Holiday', label: 'Juneteenth', ruleType: 'fixed-month-day', ruleValue: '6/19', repeatAnnually: true },
   { type: 'Holiday', label: 'Independence Day', ruleType: 'fixed-month-day', ruleValue: '7/4', repeatAnnually: true },
   { type: 'Holiday', label: 'Labor Day', ruleType: 'nth-weekday', ruleValue: '1,1,8', repeatAnnually: true },
   { type: 'Holiday', label: 'Columbus Day', ruleType: 'nth-weekday', ruleValue: '2,1,9', repeatAnnually: true },
@@ -16,8 +15,10 @@ const DEFAULT_SPECIAL_DATE_ROWS = [
   { type: 'Holiday', label: 'Christmas Day', ruleType: 'fixed-month-day', ruleValue: '12/25', repeatAnnually: true },
   { type: 'Holiday', label: "New Year's Eve", ruleType: 'fixed-month-day', ruleValue: '12/31', repeatAnnually: true },
   { type: 'Holiday', label: 'Easter Sunday', ruleType: 'easter', ruleValue: '', repeatAnnually: true },
-  { type: 'Holiday', label: 'LDS General Conference', ruleType: 'conference-weekend', ruleValue: 'april', repeatAnnually: true },
-  { type: 'Holiday', label: 'LDS General Conference', ruleType: 'conference-weekend', ruleValue: 'october', repeatAnnually: true },
+  { type: 'Holiday', label: 'General Conference Sunday', ruleType: 'nth-weekday', ruleValue: '1,0,3', repeatAnnually: true },
+  { type: 'Holiday', label: 'General Conference Saturday', ruleType: 'relative', ruleValue: 'nth-weekday|1,0,3|-1', repeatAnnually: true },
+  { type: 'Holiday', label: 'General Conference Sunday', ruleType: 'nth-weekday', ruleValue: '1,0,9', repeatAnnually: true },
+  { type: 'Holiday', label: 'General Conference Saturday', ruleType: 'relative', ruleValue: 'nth-weekday|1,0,9|-1', repeatAnnually: true },
 ];
 
 function doGet() {
@@ -109,21 +110,57 @@ function addEntry(contents, customDate, location) {
   return true;
 }
 
-function addSpecialDate(dateValue, label, repeatAnnually) {
-  const sheet = getOrCreateSheet_(SPECIAL_DATES_SHEET_NAME);
-  const text = String(label || '').trim();
-  const date = parseDateInput_(dateValue);
+function updateEntry(rowNumber, contents, customDate, location) {
+  const sheet = getOrCreateSheet_(JOURNAL_SHEET_NAME);
+  ensureJournalHeader_(sheet);
 
-  if (!date) {
-    throw new Error('A valid date is required.');
+  const row = Number(rowNumber);
+  if (!Number.isInteger(row) || row < 2 || row > sheet.getLastRow()) {
+    throw new Error('Invalid journal entry row.');
   }
+
+  const text = String(contents || '').trim();
+  const place = String(location || '').trim();
+  if (!text) {
+    throw new Error('Entry text is required.');
+  }
+
+  const current = sheet.getRange(row, 1, 1, 5).getValues()[0];
+  const timestamp = coerceDate_(current[0]) || new Date();
+  const dateValue = parseDateInput_(customDate) || coerceDate_(current[3]) || startOfDay_(new Date());
+  const modified = new Date();
+
+  sheet.getRange(row, 1, 1, 5).setValues([[timestamp, text, place, dateValue, modified]]);
+  return true;
+}
+
+function addSpecialDate(labelOrDate, ruleTypeOrLabel, dateValue, ruleValue) {
+  const sheet = getOrCreateSpecialDatesSheet_(true);
+  ensureSpecialDatesHeader_(sheet);
+
+  const text = String(labelOrDate || '').trim();
+  const ruleType = String(ruleTypeOrLabel || '').trim().toLowerCase();
+  const date = parseDateInput_(dateValue);
+  const value = String(ruleValue || '').trim();
 
   if (!text) {
     throw new Error('A label is required.');
   }
 
-  ensureSpecialDatesHeader_(sheet);
-  sheet.appendRow(['Personal', text, startOfDay_(date), Boolean(repeatAnnually), '', '', true, '']);
+  if (ruleType === 'fixed-date') {
+    if (!date) {
+      throw new Error('A valid date is required.');
+    }
+    const tz = Session.getScriptTimeZone();
+    sheet.appendRow(['Holiday', text, true, 'fixed-month-day', Utilities.formatDate(date, tz, 'M/d'), true]);
+    return true;
+  }
+
+  if (!ruleType) {
+    throw new Error('A rule type is required.');
+  }
+
+  sheet.appendRow(['Holiday', text, true, ruleType, value, true]);
   return true;
 }
 
@@ -153,9 +190,13 @@ function getEntries_(specialDates, tz) {
   }
 
   const startRow = isHeaderRow_(values[0], ['timestamp', 'content', 'date']) ? 1 : 0;
-  const rows = values.slice(startRow).filter(row => row.some(cell => cell !== '' && cell !== null));
+  const rows = values
+    .map((row, index) => ({ row: row, rowNumber: index + 1 }))
+    .slice(startRow)
+    .filter(item => item.row.some(cell => cell !== '' && cell !== null));
 
-  return rows.map((row, index) => {
+  return rows.map(item => {
+    const row = item.row;
     const timestamp = coerceDate_(row[0]);
     const content = String(row[1] ?? '').trim();
     const location = String(row[2] ?? '').trim();
@@ -166,7 +207,8 @@ function getEntries_(specialDates, tz) {
     const viewKeyText = entryDate ? getViewKeyText_(entryDate, tz) : '';
 
     return {
-      id: buildEntryId_(timestamp || entryDate, index),
+      rowNumber: item.rowNumber,
+      id: buildEntryId_(timestamp || entryDate, item.rowNumber),
       timestamp: timestamp ? timestamp.toISOString() : '',
       dateKey: entryDate ? dateKey_(entryDate, tz) : '',
       displayDate: formatLongDisplayDate_(entryDate || timestamp, tz),
@@ -264,13 +306,8 @@ function buildViewContext_(referenceDate, entries, specialDates, tz) {
 }
 
 function getSpecialDates_() {
-  const sheet = getSheetIfExists_(SPECIAL_DATES_SHEET_NAME);
-  if (!sheet) {
-    return [];
-  }
-
+  const sheet = getOrCreateSpecialDatesSheet_(true);
   ensureSpecialDatesHeader_(sheet);
-  seedDefaultHolidayRows_(sheet);
 
   const values = sheet.getDataRange().getValues();
   if (!values.length) {
@@ -360,37 +397,65 @@ function isSpecialDateActiveFor_(item, date, dateKey, monthDayKey, tz) {
 function isHolidayRuleMatch_(item, date, tz) {
   const ruleType = String(item.ruleType || '').toLowerCase();
   const ruleValue = String(item.ruleValue || '').trim();
-  const monthDay = Utilities.formatDate(date, tz || Session.getScriptTimeZone(), 'M/d');
-
-  if (ruleType === 'fixed-month-day') {
-    return ruleValue === monthDay;
-  }
-
-  if (ruleType === 'easter') {
-    return isSameDate_(date, getEasterSunday_(date.getFullYear()));
-  }
-
-  if (ruleType === 'nth-weekday') {
-    const parts = ruleValue.split(',').map(part => Number(part.trim()));
-    if (parts.length !== 3 || parts.some(num => Number.isNaN(num))) {
-      return false;
-    }
-    return isNthWeekdayOfMonth_(date, parts[0], parts[1], parts[2]);
-  }
-
-  if (ruleType === 'last-weekday') {
-    const parts = ruleValue.split(',').map(part => Number(part.trim()));
-    if (parts.length !== 2 || parts.some(num => Number.isNaN(num))) {
-      return false;
-    }
-    return isLastWeekdayOfMonth_(date, parts[0], parts[1]);
-  }
-
   if (ruleType === 'conference-weekend') {
     return isConferenceWeekendMatch_(date, ruleValue);
   }
+  const target = getHolidayRuleDate_(date.getFullYear(), ruleType, ruleValue, tz);
+  return target ? isSameDate_(date, target) : false;
+}
 
-  return false;
+function getHolidayRuleDate_(year, ruleType, ruleValue, tz) {
+  const type = String(ruleType || '').toLowerCase();
+  const value = String(ruleValue || '').trim();
+  const timeZone = tz || Session.getScriptTimeZone();
+
+  if (type === 'fixed-month-day') {
+    const parts = value.split('/').map(part => Number(part.trim()));
+    if (parts.length !== 2 || parts.some(num => Number.isNaN(num))) {
+      return null;
+    }
+    return new Date(year, parts[0] - 1, parts[1]);
+  }
+
+  if (type === 'easter') {
+    return getEasterSunday_(year);
+  }
+
+  if (type === 'nth-weekday') {
+    const parts = value.split(',').map(part => Number(part.trim()));
+    if (parts.length !== 3 || parts.some(num => Number.isNaN(num))) {
+      return null;
+    }
+    return getNthWeekdayOfMonth_(year, parts[2], parts[1], parts[0]);
+  }
+
+  if (type === 'last-weekday') {
+    const parts = value.split(',').map(part => Number(part.trim()));
+    if (parts.length !== 2 || parts.some(num => Number.isNaN(num))) {
+      return null;
+    }
+    return getLastWeekdayOfMonth_(year, parts[1], parts[0]);
+  }
+
+  if (type === 'relative') {
+    const relative = decodeRelativeRuleValue_(value);
+    if (!relative) {
+      return null;
+    }
+    const base = getHolidayRuleDate_(year, relative.baseType, relative.baseValue, timeZone);
+    if (!base) {
+      return null;
+    }
+    const offsetDays = Number(relative.offsetDays || 0);
+    if (Number.isNaN(offsetDays)) {
+      return null;
+    }
+    const result = new Date(base);
+    result.setDate(result.getDate() + offsetDays);
+    return result;
+  }
+
+  return null;
 }
 
 function isLastWeekdayOfMonth_(date, weekday, monthIndex) {
@@ -400,6 +465,23 @@ function isLastWeekdayOfMonth_(date, weekday, monthIndex) {
 
   const nextWeek = new Date(date.getFullYear(), date.getMonth(), date.getDate() + 7);
   return nextWeek.getMonth() !== monthIndex;
+}
+
+function getNthWeekdayOfMonth_(year, monthIndex, weekday, nth) {
+  const date = new Date(year, monthIndex, 1);
+  while (date.getDay() !== weekday) {
+    date.setDate(date.getDate() + 1);
+  }
+  date.setDate(date.getDate() + (nth - 1) * 7);
+  return date.getMonth() === monthIndex ? date : null;
+}
+
+function getLastWeekdayOfMonth_(year, monthIndex, weekday) {
+  const date = new Date(year, monthIndex + 1, 0);
+  while (date.getDay() !== weekday) {
+    date.setDate(date.getDate() - 1);
+  }
+  return date;
 }
 
 function getViewKeyNumber_(date, tz) {
@@ -477,45 +559,22 @@ function parseSpecialDateRow_(row) {
   const fourth = row[3];
   const fifth = row[4];
   const sixth = row[5];
-  const seventh = row[6];
-  const eighth = row[7];
-
-  if (isSpecialDatesHeaderRow_(row)) {
-    return null;
-  }
 
   if (first.toLowerCase() === 'personal' || first.toLowerCase() === 'holiday') {
-    const date = coerceDate_(third);
+    if (!second) {
+      return null;
+    }
     return {
       type: first || 'Personal',
-      dateKey: date ? dateKey_(date) : '',
-      monthDayKey: date ? monthDayKey_(date) : '',
       label: second,
-      repeatAnnually: toBoolean_(fourth),
-      ruleType: String(fifth ?? '').trim(),
-      ruleValue: String(sixth ?? '').trim(),
-      enabled: seventh === '' || seventh === null ? true : toBoolean_(seventh),
-      notes: String(eighth ?? '').trim(),
+      repeatAnnually: toBoolean_(third),
+      ruleType: String(fourth ?? '').trim(),
+      ruleValue: String(fifth ?? '').trim(),
+      enabled: row.length < 6 ? true : toBoolean_(sixth),
     };
   }
 
-  const date = coerceDate_(row[0]);
-  const label = second;
-  if (!date || !label) {
-    return null;
-  }
-
-  return {
-    type: 'Personal',
-    dateKey: dateKey_(date),
-    monthDayKey: monthDayKey_(date),
-    label: label,
-    repeatAnnually: toBoolean_(third),
-    ruleType: '',
-    ruleValue: '',
-    enabled: true,
-    notes: String(fourth ?? '').trim(),
-  };
+  return null;
 }
 
 function parseDateInput_(value) {
@@ -618,6 +677,22 @@ function getOrCreateSheet_(name) {
   return ss.getSheetByName(name) || ss.insertSheet(name);
 }
 
+function getOrCreateSpecialDatesSheet_(seedDefaults) {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  let sheet = ss.getSheetByName(SPECIAL_DATES_SHEET_NAME);
+  if (!sheet) {
+    sheet = ss.insertSheet(SPECIAL_DATES_SHEET_NAME);
+    ensureSpecialDatesHeader_(sheet);
+    if (seedDefaults) {
+      seedDefaultHolidayRows_(sheet);
+    }
+    return sheet;
+  }
+
+  ensureSpecialDatesHeader_(sheet);
+  return sheet;
+}
+
 function ensureSpecialDatesHeader_(sheet) {
   const header = SPECIAL_DATE_HEADER.slice();
   if (sheet.getLastRow() === 0) {
@@ -625,21 +700,12 @@ function ensureSpecialDatesHeader_(sheet) {
     return;
   }
 
-  const width = Math.max(sheet.getLastColumn(), header.length);
-  const row = sheet.getRange(1, 1, 1, width).getValues()[0];
+  const row = sheet.getRange(1, 1, 1, header.length).getValues()[0];
   const current = row.map(value => String(value || '').trim().toLowerCase());
-  const hasNewHeader = current[0] === 'type' && current[1] === 'label' && current[2] === 'date';
-  if (hasNewHeader) {
+  if (current[0] === 'type' && current[1] === 'label' && current[2] === 'repeatannually') {
     return;
   }
 
-  const hasOldHeader = current[0] === 'date' && current[1] === 'label' && current[2] === 'repeatannually';
-  if (hasOldHeader) {
-    sheet.getRange(1, 1, 1, header.length).setValues([header]);
-    return;
-  }
-
-  sheet.insertRowsBefore(1, 1);
   sheet.getRange(1, 1, 1, header.length).setValues([header]);
 }
 
@@ -665,48 +731,51 @@ function isHeaderRow_(row, expectedTerms) {
 }
 
 function seedDefaultHolidayRows_(sheet) {
-  const values = sheet.getDataRange().getValues();
-  const existing = {};
+  const lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try {
+    const values = sheet.getDataRange().getValues();
+    const existing = {};
 
-  values.slice(1).forEach(row => {
-    const parsed = parseSpecialDateRow_(row);
-    if (!parsed) {
+    values.slice(1).forEach(row => {
+      const parsed = parseSpecialDateRow_(row);
+      if (!parsed) {
+        return;
+      }
+
+      const key = specialDateSeedKey_(parsed);
+      existing[key] = true;
+    });
+
+    const rowsToAdd = DEFAULT_SPECIAL_DATE_ROWS.filter(item => {
+      const key = specialDateSeedKey_({
+        type: item.type,
+        label: item.label,
+        dateKey: '',
+        ruleType: item.ruleType,
+        ruleValue: item.ruleValue,
+        repeatAnnually: item.repeatAnnually,
+        enabled: true,
+      });
+      return !existing[key];
+    }).map(item => ([
+      item.type,
+      item.label,
+      item.repeatAnnually !== false,
+      item.ruleType || '',
+      item.ruleValue || '',
+      true,
+    ]));
+
+    if (!rowsToAdd.length) {
       return;
     }
 
-    const key = specialDateSeedKey_(parsed);
-    existing[key] = true;
-  });
-
-  const rowsToAdd = DEFAULT_SPECIAL_DATE_ROWS.filter(item => {
-    const key = specialDateSeedKey_({
-      type: item.type,
-      label: item.label,
-      dateKey: '',
-      ruleType: item.ruleType,
-      ruleValue: item.ruleValue,
-      repeatAnnually: item.repeatAnnually,
-      enabled: true,
-      notes: '',
-    });
-    return !existing[key];
-  }).map(item => ([
-    item.type,
-    item.label,
-    '',
-    item.repeatAnnually !== false,
-    item.ruleType || '',
-    item.ruleValue || '',
-    true,
-    item.notes || '',
-  ]));
-
-  if (!rowsToAdd.length) {
-    return;
+    const startRow = sheet.getLastRow() + 1;
+    sheet.getRange(startRow, 1, rowsToAdd.length, SPECIAL_DATE_HEADER.length).setValues(rowsToAdd);
+  } finally {
+    lock.releaseLock();
   }
-
-  const startRow = sheet.getLastRow() + 1;
-  sheet.getRange(startRow, 1, rowsToAdd.length, SPECIAL_DATE_HEADER.length).setValues(rowsToAdd);
 }
 
 function specialDateKey_(item) {
@@ -731,13 +800,9 @@ function specialDateSeedKey_(item) {
   return specialDateKey_(item);
 }
 
-function isSpecialDatesHeaderRow_(row) {
-  const values = row.slice(0, 8).map(value => String(value || '').trim().toLowerCase());
-  return values[0] === 'type' || values[1] === 'label' || values[2] === 'date';
-}
-
 function isConferenceWeekendMatch_(date, ruleValue) {
-  const monthIndex = conferenceMonthIndex_(ruleValue);
+  const value = String(ruleValue || '').trim().toLowerCase();
+  const monthIndex = conferenceMonthIndex_(value);
   if (monthIndex === null) {
     return false;
   }
@@ -769,6 +834,19 @@ function conferenceMonthIndex_(ruleValue) {
   }
 
   return null;
+}
+
+function decodeRelativeRuleValue_(value) {
+  const parts = String(value || '').split('|');
+  if (parts.length < 3) {
+    return null;
+  }
+
+  return {
+    baseType: String(parts[0] || '').trim().toLowerCase(),
+    baseValue: String(parts[1] || '').trim(),
+    offsetDays: String(parts[2] || '').trim(),
+  };
 }
 
 function getFirstSundayOfMonth_(year, monthIndex) {

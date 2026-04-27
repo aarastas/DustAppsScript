@@ -1,511 +1,674 @@
 <!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Dust</title>
-  <!-- Default favicon – replace with your own later -->
-  <!-- Basic favicon (most browsers) -->
-  <link rel="icon" type="image/png" sizes="32x32" href="https://raw.githubusercontent.com/aarastas/DustAppsScript/main/favicon-32x32.png">
-  <!-- Apple Touch Icon (iOS/Safari home screen) -->
-  <link rel="apple-touch-icon" sizes="180x180" href="https://raw.githubusercontent.com/aarastas/DustAppsScript/main/apple-touch-icon.png">
-  <!-- Android Chrome / PWA -->
-  <link rel="icon" type="image/png" sizes="192x192" href="https://raw.githubusercontent.com/aarastas/DustAppsScript/main/android-chrome-192x192.png">
-  <!-- Bootstrap 3.3 CDN -->
-  <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css" integrity="sha384-BVYiiSIFeK1dGmJRAkycuHAHRg32OmUcww7on3RYdg4Va+PmSTsz/K68vbdEjh4u" crossorigin="anonymous">
-  <!-- Fonts -->
-  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;500;700&family=Patrick+Hand&display=swap" rel="stylesheet">
-  <style>
-    body {
-      background-color: #1a1a1a;
-      color: #e0e0e0;
-      font-family: 'Cormorant Garamond', Georgia, serif;
-      font-size: 1.35rem;
-      line-height: 1.7;
-      padding: 30px 15px;
-      margin: 0;
-    }
-    button, .btn {
-      touch-action: manipulation; /* faster tap response */
-      -webkit-tap-highlight-color: transparent; /* removes blue highlight on tap */
-      min-height: 44px; /* Apple Human Interface Guidelines minimum tap target */
-      min-width: 44px;
-    }
-    .container-fluid {
-      max-width: 900px;
-      margin: 0 auto;
-    }
-    .header {
-      background-color: #222222;
-      color: #888888;
-      font-family: 'Patrick Hand', 'Bradley Hand', cursive;
-      font-size: 2.5rem;
-      padding: 15px 25px;
-      margin: -30px -15px 35px -15px;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-    }
-    .header a, #user {
-      color: #888888;
-      text-decoration: none;
-    }
-    .header a:hover, #user:hover {
-      color: #bbbbbb;
-      cursor: pointer;
-    }
-    h2 {
-      font-family: 'Patrick Hand', 'Bradley Hand', cursive;
-      color: #999999;
-      text-align: center;
-      margin-bottom: 35px;
-      font-size: 3.3rem;
-      letter-spacing: 1px;
-    }
-    .entry {
-      margin-bottom: 0.8rem;
-      padding-bottom: 0.6rem;
-      border-bottom: 1px solid #2a2a2a;
-    }
-    .entry-date {
-      color: #bbbbbb;
-      font-size: 1.35rem;
-      margin-bottom: 0.25rem;
-      display: block;
-      font-weight: 500;
-    }
-    .entry-content {
-      white-space: pre-wrap;
-      word-wrap: break-word;
-      font-size: 1.35rem;
-    }
-    #addForm {
-      background: #222222;
-      padding: 25px;
-      border-radius: 6px;
-      margin-top: 45px;
-      border: 1px solid #333;
-    }
-    #addForm label {
-      color: #999999;
-      font-family: 'Patrick Hand', cursive;
-      font-size: 1.5rem;
-      margin-bottom: 10px;
-      display: block;
-    }
-    #date {
-      width: auto;
-      display: inline-block;
-      float: right;
-      background: #333;
-      color: #ddd;
-      border: 1px solid #444;
-      font-size: 1.2rem;
-      padding: 6px 10px;
-    }
-    textarea {
-      font-family: 'Cormorant Garamond', Georgia, serif;
-      font-size: 1.35rem;
-      background: #2a2a2a;
-      color: #f0f0f0;
-      border: 1px solid #444;
-      resize: vertical;
-      min-height: 240px;
-      width: 100%;
-      padding: 16px;
-      border-radius: 4px;
-    }
-    textarea:focus {
-      border-color: #777;
-      outline: none;
-    }
-    .btn-submit {
-      background-color: #222222;
-      color: #999999;
-      border: none;
-      font-size: 1.6rem;
-      font-family: 'Patrick Hand', cursive;
-      padding: 14px;
-      width: 100%;
-      margin-top: 20px;
-      transition: color 0.2s;
-    }
-    .btn-submit:hover {
-      color: #cccccc;
-    }
-    .btn-submit:disabled {
-      color: #555;
-    }
-    #cancelBtn {
-      background: #444 !important;
-      color: #aaa !important;
-      display: none;
-      font-size: 1.6rem;
-    }
-    #draftToast {
-      position: fixed;
-      bottom: 30px;
-      right: 30px;
-      background: rgba(40, 40, 40, 0.85);
-      color: #bbb;
-      padding: 12px 24px;
-      border-radius: 6px;
-      font-family: 'Patrick Hand', cursive;
-      font-size: 1.2rem;
-      border: 1px solid #555;
-      opacity: 0;
-      transform: translateY(20px);
-      transition: all 0.4s ease;
-      z-index: 1000;
-      pointer-events: none;
-    }
-    #draftToast.visible {
-      opacity: 1;
-      transform: translateY(0);
-    }
-    .loading, .empty-state {
-      text-align: center;
-      color: #777;
-      font-style: italic;
-      padding: 60px 0;
-    }
-    .empty-state p {
-      font-size: 1.5rem;
-    }
-    /* Mobile adjustments */
-    @media (max-width: 768px) {
+<html>
+  <head>
+    <base target="_top">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <style>
+      :root {
+        color-scheme: light;
+        --panel: rgba(255, 255, 255, 0.85);
+        --border: rgba(74, 57, 36, 0.14);
+        --text: #2f2418;
+        --muted: #6b5d4f;
+        --accent: #8d5a2b;
+        --accent-strong: #633b17;
+        --chip: #eadac4;
+        --shadow: 0 18px 50px rgba(43, 30, 16, 0.10);
+      }
+
+      * { box-sizing: border-box; }
+      html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
       body {
-        padding: 15px 10px;
-        font-size: 1.25rem; /* slightly smaller but still readable */
-        line-height: 1.6;
+        margin: 0;
+        min-height: 100vh;
+        color: var(--text);
+        font-family: Georgia, Garamond, "Times New Roman", serif;
+        font-size: 17px;
+        line-height: 1.55;
+        background:
+          radial-gradient(circle at top left, rgba(255, 248, 234, 0.92), transparent 30%),
+          radial-gradient(circle at top right, rgba(223, 198, 169, 0.35), transparent 26%),
+          linear-gradient(180deg, #f7f2ea 0%, #f3efe7 100%);
       }
 
-      .container-fluid {
-        padding: 0 5px;
+      .app { width: min(100%, 1040px); margin: 0 auto; padding: 16px 16px 28px; }
+      .hero, .panel {
+        background: var(--panel);
+        border: 1px solid var(--border);
+        box-shadow: var(--shadow);
+        backdrop-filter: blur(10px);
       }
-
-      .header {
-        font-size: 2rem;
-        padding: 12px 15px;
-        flex-direction: column;
-        gap: 8px;
-        text-align: center;
+      .hero { display: grid; gap: 14px; padding: 20px; border-radius: 24px; }
+      .hero-left { display: grid; gap: 8px; align-content: start; }
+      .title-row {
+        display: flex;
+        align-items: flex-start;
+        gap: 28px;
+        flex-wrap: wrap;
       }
-
-      h2 {
-        font-size: 2.6rem;
-        margin-bottom: 25px;
+      .eyebrow-row {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: 12px;
       }
-
-      .entry {
-        margin-bottom: 1rem;
-        padding: 12px;
-        border-radius: 6px;
-        background: #222;
-        border: 1px solid #333;
+      .eyebrow {
+        margin: 0 0 6px;
+        color: var(--accent);
+        font-size: 0.86rem;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
       }
-
-      .entry-date {
-        font-size: 1.2rem;
+      h1, h2, p { margin: 0; }
+      h1 { font-size: clamp(2rem, 6vw, 3.4rem); line-height: 0.98; letter-spacing: -0.03em; }
+      .title-side {
+        display: grid;
+        gap: 4px;
+        align-content: start;
+        padding-top: 6px;
       }
-
-      .entry-content {
-        font-size: 1.25rem;
-      }
-
-      #addForm {
-        padding: 20px 15px;
-        margin-top: 30px;
-        position: relative; /* no sticky on small screens */
-        bottom: auto;
-      }
-
-      textarea {
-        font-size: 1.25rem;
-        min-height: 200px;
-        padding: 12px;
-      }
-
-      .btn-submit {
-        font-size: 1.5rem;
-        padding: 12px;
-      }
-
-      #draftToast {
-        bottom: 20px;
-        right: 20px;
-        left: 20px;
-        right: auto;
-        width: calc(100% - 40px);
-        text-align: center;
-        font-size: 1.1rem;
-      }
-
-      /* Make edit/delete buttons easier to tap */
-      .entry-actions button {
-        padding: 8px 16px;
+      .quote {
+        color: rgba(99, 59, 23, 0.50);
         font-size: 1rem;
-        margin: 5px;
+        font-style: italic;
+        font-weight: 400;
+        line-height: 1.2;
+        max-width: 24ch;
       }
-
-      /* Fix any overflowing text */
-      .entry-content {
-        word-break: break-word;
-        overflow-wrap: break-word;
+      .header-date {
+        color: rgba(99, 59, 23, 0.50);
+        font-size: 0.92rem;
+        font-style: italic;
+        line-height: 1.2;
+        text-align: left;
+        white-space: nowrap;
       }
-    }
-
-    /* Very small phones (e.g. iPhone SE) */
-    @media (max-width: 480px) {
-      body {
-        font-size: 1.15rem;
+      .header-user {
+        color: var(--accent);
+        font-size: 0.92rem;
+        font-style: italic;
+        line-height: 1.2;
+        white-space: nowrap;
       }
-      h2 {
-        font-size: 2.2rem;
+      .header-meta {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 14px;
+        align-items: baseline;
+        justify-content: flex-end;
       }
-      textarea {
-        font-size: 1.15rem;
+      .pill {
+        display: inline-flex; align-items: center; min-height: 40px; padding: 8px 12px;
+        border-radius: 999px; background: rgba(141, 90, 43, 0.10); color: var(--accent-strong); font-size: 0.95rem;
       }
-    }
-  </style>
-</head>
-<body>
-  <div class="header">
-    <a href="#">Dust thou art</a>
-    <span id="user" onclick="logout()" style="cursor:pointer; text-decoration:underline;"></span>
-  </div>
+      .grid { display: grid; gap: 16px; margin-top: 16px; }
+      .panel { padding: 18px; border-radius: 22px; }
+      .panel-head {
+        display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 14px;
+      }
+      .panel-head span, .small-note, .muted, .status { color: var(--muted); font-size: 0.92rem; }
+      label { display: block; margin-bottom: 6px; font-size: 0.95rem; color: var(--muted); }
+      input, textarea, select, button { font: inherit; }
+      input, textarea, select {
+        width: 100%; border-radius: 14px; border: 1px solid rgba(74, 57, 36, 0.18);
+        background: rgba(255, 255, 255, 0.92); color: var(--text); padding: 12px 14px; outline: none;
+      }
+      input:focus, textarea:focus, select:focus {
+        border-color: rgba(141, 90, 43, 0.55); box-shadow: 0 0 0 4px rgba(141, 90, 43, 0.12);
+      }
+      input, select { min-height: 46px; }
+      textarea { min-height: 180px; resize: vertical; line-height: 1.6; font-size: 17px; }
+      .composer-grid, .special-grid, .filter-row, .view-row { display: grid; gap: 12px; }
+      .composer-grid {
+        grid-template-columns: 1fr;
+        grid-auto-flow: row;
+      }
+      .actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 12px; }
+      button {
+        min-height: 46px; padding: 12px 16px; border: 0; border-radius: 14px;
+        background: var(--accent); color: white; cursor: pointer; box-shadow: 0 10px 24px rgba(141, 90, 43, 0.18);
+      }
+      button.secondary { background: rgba(141, 90, 43, 0.12); color: var(--accent-strong); box-shadow: none; }
+      button:disabled { opacity: 0.65; cursor: wait; }
+      details {
+        margin-top: 8px; border-radius: 18px; border: 1px solid rgba(74, 57, 36, 0.12);
+        background: rgba(255, 255, 255, 0.50); padding: 10px 12px;
+      }
+      summary { cursor: pointer; color: var(--accent-strong); font-weight: 600; list-style: none; }
+      summary::-webkit-details-marker { display: none; }
+      .entry-list, .special-list { display: grid; gap: 12px; }
+      .entry-card, .special-card {
+        padding: 16px; border-radius: 18px; background: rgba(255, 255, 255, 0.90); border: 1px solid rgba(74, 57, 36, 0.10);
+      }
+      .entry-top { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; margin-bottom: 10px; }
+      .entry-date { font-weight: 700; }
+      .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+      .chip {
+        display: inline-flex; align-items: center; min-height: 28px; padding: 4px 10px;
+        border-radius: 999px; background: var(--chip); color: var(--accent-strong); font-size: 0.86rem;
+      }
+      .entry-card .chip, .special-card .chip {
+        min-height: 24px;
+        padding: 2px 8px;
+        font-size: 0.78rem;
+      }
+      .special-card .chip {
+        background: rgba(141, 90, 43, 0.12);
+      }
+      .entry-save {
+        display: flex;
+        align-items: flex-end;
+        justify-content: flex-start;
+      }
+      .entry-save button {
+        min-height: 36px;
+        padding: 8px 10px;
+        font-size: 0.86rem;
+        width: auto;
+      }
+      .entry-content { white-space: pre-wrap; word-break: break-word; }
+      .entry-meta { margin-top: 8px; color: var(--muted); font-size: 0.9rem; }
+      .toolbar { display: grid; gap: 12px; grid-template-columns: 1fr; margin-bottom: 14px; }
+      .view-info {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        align-items: center;
+        justify-content: flex-end;
+        min-height: 28px;
+      }
+      @media (min-width: 760px) {
+        .hero { grid-template-columns: 1fr auto; align-items: end; }
+        .hero-left { min-width: min(56ch, 100%); }
+        .composer-grid {
+          grid-template-columns: 220px 220px 1fr;
+          grid-template-areas:
+            "date location content"
+            "save . content";
+          align-items: start;
+        }
+        .entry-date-field { grid-area: date; align-self: start; }
+        .entry-location-field { grid-area: location; align-self: start; }
+        .entry-content-field { grid-area: content; align-self: start; }
+        .entry-save { grid-area: save; align-self: end; }
+        .special-grid { grid-template-columns: 220px 1fr auto; align-items: end; }
+        .filter-row { grid-template-columns: 1fr 220px; align-items: end; }
+        .view-row { grid-template-columns: 220px 1fr auto; align-items: end; }
+      }
+      @media (max-width: 759px) {
+        html { font-size: 18px; }
+        .app { padding: 12px 12px 20px; }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="app">
+      <header class="hero">
+        <div class="hero-left">
+          <div class="eyebrow-row">
+            <p class="eyebrow">Journal</p>
+            <span class="header-user" id="userPill">Loading user...</span>
+          </div>
+          <div class="title-row">
+            <h1>Dust</h1>
+            <div class="title-side">
+              <span class="header-date" id="todayPill">Loading date...</span>
+              <span class="quote">I am large, I contain multitudes.</span>
+            </div>
+          </div>
+        </div>
+      </header>
 
-  <div class="container-fluid">
-    <h2>Dust Journal</h2>
+      <div class="grid">
+        <section class="panel">
+          <div class="panel-head">
+            <h2>On this day</h2>
+            <span id="entryCount">Loading...</span>
+          </div>
 
-    <div id="entries">
-      <div class="loading">Loading your entries...</div>
-    </div>
-
-    <div id="addForm">
-      <input type="hidden" id="entryId">
-      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
-        <label style="margin:0;">Add a date if not today (optional)</label>
-        <input type="date" id="date" style="width:auto; font-size:1.1rem; padding:8px;">
-      </div>
-
-      <textarea id="contents" placeholder="Do I contradict myself?..."></textarea>
-
-      <div class="form-actions" style="display:flex; gap:12px; margin-top:16px;">
-        <button id="submitBtn" class="btn btn-submit" onclick="submitEntry()">submit</button>
-        <button id="cancelBtn" class="btn btn-submit" onclick="cancelEdit()">cancel</button>
-      </div>
-    </div>
-
-    <div id="draftToast">draft saved</div>
-  </div>
-
-  <script>
-    let currentEntryId = null;
-
-    window.onload = function() {
-      google.script.run.withSuccessHandler(showUser).getUserInfo();
-      checkSpreadsheetSelection();
-    };
-
-    function showUser(info) {
-      document.getElementById('user').innerHTML = (info.name || 'Guest');
-    }
-
-    function checkSpreadsheetSelection() {
-      google.script.run
-        .withSuccessHandler(info => {
-          if (info.selected) {
-            currentEntryId = null;
-            loadEntries();
-            setupAutoSave();
-            loadDraft();
-          } else {
-            document.getElementById('entries').innerHTML = '<div class="loading" style="color:#c44;">No spreadsheet connected</div>';
-          }
-        })
-        .withFailureHandler(err => {
-          document.getElementById('entries').innerHTML = '<div class="loading" style="color:#c44;">Error connecting: ' + err.message + '</div>';
-        })
-        .getCurrentSpreadsheetInfo();
-    }
-
-    function loadEntries() {
-      document.getElementById('entries').innerHTML = '<div class="loading">Loading your entries...</div>';
-
-      google.script.run
-        .withSuccessHandler(entries => {
-          const container = document.getElementById('entries');
-          if (entries.length === 0) {
-            container.innerHTML = '<div class="empty-state"><p>No entries yet.<br>Start writing below.</p></div>';
-            return;
-          }
-          container.innerHTML = entries.map(e => `
-            <div class="entry" data-id="${e.dustId}">   <!-- use dustId here -->
-              <div class="entry-date">${escapeHtml(e.date)}</div>
-              <div class="entry-content">${escapeHtml(e.content)}</div>
-              <div style="margin-top:6px; text-align:right;">
-                <button class="btn btn-xs" style="color:#888; background:transparent; border:1px solid #555; margin-right:8px;" onclick="editEntry('${e.dustId}')">edit</button>
-                <button class="btn btn-xs" style="color:#888; background:transparent; border:1px solid #555;" onclick="deleteEntry('${e.dustId}')">delete</button>
+          <div class="toolbar">
+            <div class="view-row">
+              <div>
+                <input type="date" id="previewDate" aria-label="Preview date">
+              </div>
+              <div class="view-info" id="viewInfo" aria-live="polite"></div>
+            </div>
+            <!-- Search and sort retained in JS for future use.
+            <div class="filter-row">
+              <div>
+                <label for="search">Search</label>
+                <input type="search" id="search" placeholder="Filter by text, location, or label">
+              </div>
+              <div>
+                <label for="sortMode">Sort</label>
+                <select id="sortMode">
+                  <option value="newest">Newest first</option>
+                  <option value="oldest">Oldest first</option>
+                </select>
               </div>
             </div>
-          `).join('');
-        })
-        .withFailureHandler(err => {
-          document.getElementById('entries').innerHTML = `<div class="loading" style="color:#c44;">Error loading entries: ${escapeHtml(err.message)}</div>`;
-        })
-        .getEntries();
-    }
+            -->
+            <div class="status" id="status"></div>
+          </div>
 
-    function submitEntry() {
-      const contents = document.getElementById('contents').value.trim();
-      if (!contents) return showToast('Write something first', 'error');
+          <div id="entries" class="entry-list"></div>
+        </section>
 
-      const date = document.getElementById('date').value;
-      const id = document.getElementById('entryId').value;
-      const btn = document.getElementById('submitBtn');
-      btn.disabled = true;
-      btn.textContent = id ? 'Updating...' : 'Submitting...';
+        <section class="panel">
+          <div class="panel-head">
+            <h2>Today</h2>
+            <span>Saved to Dust</span>
+          </div>
 
-      const action = id ? 'updateEntry' : 'addEntry';
-      const params = id ? [id, contents, date] : [contents, date];
+          <form id="entryForm">
+            <div class="composer-grid">
+              <div class="entry-date-field">
+                <label for="entryDate">Entry date</label>
+                <input type="date" id="entryDate" name="entryDate">
+              </div>
+              <div class="entry-location-field">
+                <label for="entryLocation">Location</label>
+                <input type="text" id="entryLocation" name="entryLocation" placeholder="Seattle, WA">
+              </div>
+              <div class="entry-content-field">
+                <label for="contents">Entry text</label>
+                <textarea id="contents" name="contents" placeholder="Do I contradict myself?"></textarea>
+              </div>
+              <div class="entry-save">
+                <button type="submit" id="saveEntryBtn">Save entry</button>
+              </div>
+            </div>
+          </form>
+        </section>
 
-      google.script.run
-        .withSuccessHandler(() => {
-          document.getElementById('contents').value = '';
-          document.getElementById('date').value = '';
-          document.getElementById('entryId').value = '';
-          document.getElementById('submitBtn').textContent = 'submit';
-          document.getElementById('cancelBtn').style.display = 'none';
-          btn.disabled = false;
-          clearDraft();
-          loadEntries();
-          showToast(id ? 'Updated' : 'Saved');
-        })
-        .withFailureHandler(err => {
-          showToast('Failed — ' + err.message, 'error');
-          btn.disabled = false;
-          btn.textContent = id ? 'Update' : 'submit';
-        })
-        [action](...params);
-    }
+        <section class="panel">
+          <div class="panel-head">
+            <h2>Special dates</h2>
+            <span>Shown as tags in On this day</span>
+          </div>
 
-    function editEntry(dustId) {    // now receives dustId
-      google.script.run
-        .withSuccessHandler(entry => {
-          document.getElementById('entryId').value = entry.id;   // dust row number
-          document.getElementById('contents').value = entry.content;
-          document.getElementById('date').value = entry.date;
-          document.getElementById('submitBtn').textContent = 'Update';
-          document.getElementById('cancelBtn').style.display = 'inline-block';
-          document.getElementById('contents').focus();
-        })
-        .withFailureHandler(err => {
-          showToast('Failed to load entry: ' + err.message, 'error');
-        })
-        .getEntryById(dustId);
-    }
+          <details>
+            <summary>Add a special date</summary>
+            <form id="specialDateForm" style="margin-top: 12px;">
+              <div class="special-grid">
+                <div>
+                  <label for="specialDate">Date</label>
+                  <input type="date" id="specialDate" name="specialDate">
+                </div>
+                <div>
+                  <label for="specialLabel">Label</label>
+                  <input type="text" id="specialLabel" name="specialLabel" placeholder="Sarah's Birthday">
+                </div>
+                <div>
+                  <label for="repeatAnnually">Repeat</label>
+                  <select id="repeatAnnually" name="repeatAnnually">
+                    <option value="true">Every year</option>
+                    <option value="false">One time</option>
+                  </select>
+                </div>
+              </div>
+              <div class="actions">
+                <button type="submit" id="saveSpecialBtn">Add date</button>
+              </div>
+            </form>
+          </details>
 
-    function deleteEntry(dustId) {
-      if (!confirm('Delete this entry permanently from Dust tab?')) return;
-      google.script.run
-        .withSuccessHandler(() => {
-          loadEntries();
-          showToast('Deleted');
-        })
-        .withFailureHandler(err => {
-          showToast('Delete failed: ' + err.message, 'error');
-        })
-        .deleteEntry(dustId);
-    }
+          <div class="small-note" style="margin: 14px 0 10px;">Current SpecialDates sheet entries</div>
+          <div id="specialDates" class="special-list"></div>
+        </section>
+      </div>
+    </div>
 
-    function cancelEdit() {
-      document.getElementById('contents').value = '';
-      document.getElementById('date').value = '';
-      document.getElementById('entryId').value = '';
-      document.getElementById('submitBtn').textContent = 'submit';
-      document.getElementById('cancelBtn').style.display = 'none';
-      clearDraft();
-    }
+    <script>
+      const state = {
+        entries: [],
+        specialDates: [],
+        user: null,
+        today: '',
+        previewDate: '',
+        view: null,
+      };
 
-    function setupAutoSave() {
-      const contents = document.getElementById('contents');
-      const dateEl = document.getElementById('date');
-      const handler = () => saveDraft();
-      contents.addEventListener('input', handler);
-      dateEl.addEventListener('change', handler);
-    }
+      const els = {
+        todayPill: document.getElementById('todayPill'),
+        userPill: document.getElementById('userPill'),
+        status: document.getElementById('status'),
+        entries: document.getElementById('entries'),
+        specialDates: document.getElementById('specialDates'),
+        entryCount: document.getElementById('entryCount'),
+        search: document.getElementById('search'),
+        sortMode: document.getElementById('sortMode'),
+        entryForm: document.getElementById('entryForm'),
+        specialDateForm: document.getElementById('specialDateForm'),
+        entryDate: document.getElementById('entryDate'),
+        entryLocation: document.getElementById('entryLocation'),
+        previewDate: document.getElementById('previewDate'),
+        contents: document.getElementById('contents'),
+        specialDate: document.getElementById('specialDate'),
+        specialLabel: document.getElementById('specialLabel'),
+        repeatAnnually: document.getElementById('repeatAnnually'),
+        saveEntryBtn: document.getElementById('saveEntryBtn'),
+        saveSpecialBtn: document.getElementById('saveSpecialBtn'),
+        viewInfo: document.getElementById('viewInfo'),
+      };
 
-    let draftTimer = null;
-    function saveDraft() {
-      clearTimeout(draftTimer);
-      draftTimer = setTimeout(() => {
-        const c = document.getElementById('contents').value.trim();
-        const d = document.getElementById('date').value;
-        const id = document.getElementById('entryId').value;
-        if (c || d || id) {
-          localStorage.setItem('draft', JSON.stringify({c, d, id}));
-          showDraftToast();
-        }
-      }, 1200);
-    }
+      function setStatus(message) { els.status.textContent = message || ''; }
+      function setLoading(button, isLoading, label) { button.disabled = isLoading; button.textContent = isLoading ? 'Working...' : label; }
 
-    function showDraftToast() {
-      const el = document.getElementById('draftToast');
-      el.classList.add('visible');
-      setTimeout(() => el.classList.remove('visible'), 1800);
-    }
-
-    function loadDraft() {
-      const saved = localStorage.getItem('draft');
-      if (!saved) return;
-      const {c, d, id} = JSON.parse(saved);
-      if (confirm('Restore draft?')) {
-        document.getElementById('contents').value = c || '';
-        document.getElementById('date').value = d || '';
-        document.getElementById('entryId').value = id || '';
-        if (id) {
-          document.getElementById('submitBtn').textContent = 'Update';
-          document.getElementById('cancelBtn').style.display = 'inline-block';
-        }
-      } else {
-        clearDraft();
+      function loadAppData(referenceDate) {
+        setStatus('Loading entries...');
+        const dateArg = referenceDate === undefined ? (els.previewDate.value || state.previewDate || '') : referenceDate;
+        google.script.run
+          .withSuccessHandler(data => {
+            state.entries = data.entries || [];
+            state.specialDates = data.specialDates || [];
+            state.user = data.user || null;
+            state.today = data.today || '';
+            state.previewDate = data.previewDate || '';
+            state.view = data.view || null;
+            renderShell();
+            renderSpecialDates();
+            renderEntries();
+            setStatus('');
+          })
+          .withFailureHandler(err => {
+            setStatus(err && err.message ? err.message : 'Failed to load app data.');
+          })
+          .getAppData(dateArg);
       }
-    }
 
-    function clearDraft() {
-      localStorage.removeItem('draft');
-    }
-
-    function showToast(msg, type = 'success') {
-      const t = document.createElement('div');
-      t.className = 'toast';
-      t.style.cssText = `
-        position:fixed; bottom:80px; left:50%; transform:translateX(-50%);
-        background:${type==='error'?'#632':'#333'}; color:#ddd; padding:12px 30px;
-        border-radius:6px; z-index:2000; font-family:'Patrick Hand',cursive;
-        opacity:0; transition:opacity 0.4s;
-      `;
-      t.textContent = msg;
-      document.body.appendChild(t);
-      setTimeout(() => { t.style.opacity=1; }, 100);
-      setTimeout(() => { t.style.opacity=0; setTimeout(()=>t.remove(),400); }, 2200);
-    }
-
-    function escapeHtml(text) {
-      const div = document.createElement('div');
-      div.textContent = text;
-      return div.innerHTML;
-    }
-
-    function logout() {
-      if (confirm("Log out of Google account?")) {
-        window.location.href = 'https://accounts.google.com/Logout';
+      function renderShell() {
+        els.todayPill.textContent = state.today ? formatDateForDisplay(state.today) : '';
+        els.userPill.textContent = state.user && state.user.name
+          ? (state.user.email ? `${state.user.name} (${state.user.email})` : state.user.name)
+          : 'Signed in';
+        els.entryDate.value = state.today || els.entryDate.value;
+        els.previewDate.value = state.previewDate || state.today || '';
+        els.viewInfo.textContent = state.view
+          ? (state.view.mode === 'special'
+            ? (state.view.title || '')
+            : (state.view.reason || ''))
+          : '';
       }
-    }
 
-    // Load draft on init
-    loadDraft();
-  </script>
-</body>
+      function renderSpecialDates() {
+        els.specialDates.replaceChildren();
+        if (!state.specialDates.length) {
+          const empty = document.createElement('div');
+          empty.className = 'special-card muted';
+          empty.textContent = 'No special dates yet.';
+          els.specialDates.appendChild(empty);
+          return;
+        }
+        state.specialDates.slice().sort((a, b) => {
+          return String(a.type || '').localeCompare(String(b.type || '')) ||
+            String(a.label || '').localeCompare(String(b.label || '')) ||
+            String(a.dateKey || a.ruleType || '').localeCompare(String(b.dateKey || b.ruleType || ''));
+        }).filter((item, index, list) => {
+          const key = specialDateKey(item);
+          return list.findIndex(other => specialDateKey(other) === key) === index;
+        }).forEach(item => {
+          const card = document.createElement('div');
+          card.className = 'special-card';
+          const top = document.createElement('div');
+          top.className = 'entry-top';
+          const left = document.createElement('div');
+          const date = document.createElement('div');
+          date.className = 'entry-date';
+          date.textContent = describeSpecialDate(item);
+          const label = document.createElement('div');
+          label.className = 'muted';
+          label.textContent = item.label;
+          left.appendChild(date);
+          left.appendChild(label);
+          const chips = document.createElement('div');
+          chips.className = 'chips';
+          const repeat = document.createElement('span');
+          repeat.className = 'chip';
+          repeat.textContent = String(item.type || '').toLowerCase() === 'holiday'
+            ? (item.repeatAnnually === false ? 'One time' : 'Annual')
+            : (item.repeatAnnually ? 'Repeats annually' : 'One time');
+          chips.appendChild(repeat);
+          top.appendChild(left);
+          top.appendChild(chips);
+          card.appendChild(top);
+          els.specialDates.appendChild(card);
+        });
+      }
+
+      function describeSpecialDate(item) {
+        if (!item) return '';
+        const type = String(item.type || '').toLowerCase();
+        if (type === 'holiday') {
+          const ruleType = String(item.ruleType || '').toLowerCase();
+          const ruleValue = String(item.ruleValue || '').trim();
+          if (ruleType === 'fixed-month-day' && ruleValue) {
+            return formatMonthDay(ruleValue);
+          }
+          if (ruleType === 'easter') {
+            return 'Moves with Easter Sunday';
+          }
+          if (ruleType === 'conference-weekend') {
+            const month = ruleValue ? ruleValue.charAt(0).toUpperCase() + ruleValue.slice(1) : 'Conference';
+            return `${month} conference weekend`;
+          }
+          if (ruleType === 'nth-weekday') {
+            return describeNthWeekdayRule(ruleValue);
+          }
+          if (ruleType === 'last-weekday') {
+            return describeLastWeekdayRule(ruleValue);
+          }
+          if (ruleValue) {
+            return ruleValue;
+          }
+          return 'Holiday';
+        }
+        return item.dateKey ? formatDateForDisplay(item.dateKey) : '';
+      }
+
+      function specialDateKey(item) {
+        return [
+          String(item && item.type ? item.type : '').toLowerCase(),
+          String(item && item.label ? item.label : '').toLowerCase(),
+          String(item && item.dateKey ? item.dateKey : '').toLowerCase(),
+          String(item && item.ruleType ? item.ruleType : '').toLowerCase(),
+          String(item && item.ruleValue ? item.ruleValue : '').toLowerCase(),
+        ].join('|');
+      }
+
+      function formatMonthDay(value) {
+        const match = String(value || '').trim().match(/^(\d{1,2})\/(\d{1,2})$/);
+        if (!match) return value;
+        const month = Number(match[1]) - 1;
+        const day = Number(match[2]);
+        const date = new Date(2026, month, day);
+        return new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric' }).format(date);
+      }
+
+      function describeNthWeekdayRule(ruleValue) {
+        const parts = String(ruleValue || '').split(',').map(part => Number(part.trim()));
+        if (parts.length !== 3 || parts.some(num => Number.isNaN(num))) return ruleValue;
+        const [nth, weekday, monthIndex] = parts;
+        const weekdayName = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][weekday] || 'day';
+        const monthName = new Intl.DateTimeFormat(undefined, { month: 'long' }).format(new Date(2026, monthIndex, 1));
+        return `${ordinal(nth)} ${weekdayName} in ${monthName}`;
+      }
+
+      function describeLastWeekdayRule(ruleValue) {
+        const parts = String(ruleValue || '').split(',').map(part => Number(part.trim()));
+        if (parts.length !== 2 || parts.some(num => Number.isNaN(num))) return ruleValue;
+        const [weekday, monthIndex] = parts;
+        const weekdayName = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][weekday] || 'day';
+        const monthName = new Intl.DateTimeFormat(undefined, { month: 'long' }).format(new Date(2026, monthIndex, 1));
+        return `Last ${weekdayName} in ${monthName}`;
+      }
+
+      function ordinal(value) {
+        const n = Number(value);
+        const s = ['th', 'st', 'nd', 'rd'];
+        const v = n % 100;
+        return `${n}${s[(v - 20) % 10] || s[v] || s[0]}`;
+      }
+
+      function renderEntries() {
+        const query = els.search ? (els.search.value || '').trim().toLowerCase() : '';
+        const mode = els.sortMode ? els.sortMode.value : 'newest';
+        const entries = state.entries
+          .filter(entry => {
+            if (!query) return true;
+            return [
+              entry.displayDate,
+              entry.weekday,
+              entry.content,
+              entry.location,
+              entry.modifiedDisplay,
+              (entry.labels || []).join(' '),
+            ].join(' ').toLowerCase().includes(query);
+          })
+          .slice()
+          .sort((a, b) => {
+            const aTime = safeTime(a);
+            const bTime = safeTime(b);
+            return mode === 'oldest' ? aTime - bTime : bTime - aTime;
+          });
+
+        els.entries.replaceChildren();
+        els.entryCount.textContent = `${entries.length} ${entries.length === 1 ? 'entry' : 'entries'}`;
+        if (!entries.length) {
+          const empty = document.createElement('div');
+          empty.className = 'entry-card muted';
+          empty.textContent = 'No entries match the current filter.';
+          els.entries.appendChild(empty);
+          return;
+        }
+        entries.forEach(entry => els.entries.appendChild(buildEntryCard(entry)));
+      }
+
+      function buildEntryCard(entry) {
+        const card = document.createElement('article');
+        card.className = 'entry-card';
+        const top = document.createElement('div');
+        top.className = 'entry-top';
+        const left = document.createElement('div');
+        const date = document.createElement('div');
+        date.className = 'entry-date';
+        date.textContent = entry.displayDate || 'Undated';
+        left.appendChild(date);
+        if (entry.weekday) {
+          const weekday = document.createElement('div');
+          weekday.className = 'entry-meta';
+          weekday.textContent = entry.weekday;
+          left.appendChild(weekday);
+        }
+        const chips = document.createElement('div');
+        chips.className = 'chips';
+        (entry.labels || []).forEach(label => {
+          const chip = document.createElement('span');
+          chip.className = 'chip';
+          chip.textContent = label;
+          chips.appendChild(chip);
+        });
+        if (entry.location) {
+          const chip = document.createElement('span');
+          chip.className = 'chip';
+          chip.textContent = `Location: ${entry.location}`;
+          chips.appendChild(chip);
+        }
+        top.appendChild(left);
+        top.appendChild(chips);
+        card.appendChild(top);
+        const content = document.createElement('div');
+        content.className = 'entry-content';
+        content.textContent = entry.content || '';
+        card.appendChild(content);
+        if (entry.modifiedDisplay) {
+          const modified = document.createElement('div');
+          modified.className = 'entry-meta';
+          modified.textContent = `Modified: ${entry.modifiedDisplay}`;
+          card.appendChild(modified);
+        }
+        return card;
+      }
+
+      function safeTime(entry) {
+        const value = entry.modified || entry.timestamp || entry.dateKey;
+        const parsed = Date.parse(value);
+        return Number.isNaN(parsed) ? 0 : parsed;
+      }
+
+      function formatDateForDisplay(value) {
+        if (!value) return '';
+        const parsed = Date.parse(value + (String(value).length === 10 ? 'T00:00:00' : ''));
+        if (Number.isNaN(parsed)) return value;
+        return new Intl.DateTimeFormat(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' }).format(new Date(parsed));
+      }
+
+      function submitEntry() {
+        const contents = els.contents.value.trim();
+        const location = els.entryLocation.value.trim();
+        if (!contents) {
+          setStatus('Enter some text before saving.');
+          return;
+        }
+        setLoading(els.saveEntryBtn, true, 'Save entry');
+        setStatus('Saving entry...');
+        google.script.run
+          .withSuccessHandler(() => {
+            els.contents.value = '';
+            els.entryLocation.value = '';
+            setLoading(els.saveEntryBtn, false, 'Save entry');
+            setStatus('Entry saved.');
+            loadAppData(els.previewDate.value || state.previewDate || '');
+          })
+          .withFailureHandler(err => {
+            setLoading(els.saveEntryBtn, false, 'Save entry');
+            setStatus(err && err.message ? err.message : 'Failed to save entry.');
+          })
+          .addEntry(contents, els.entryDate.value, location);
+      }
+
+      function changePreviewDate(dateValue) {
+        setStatus('Updating preview date...');
+        loadAppData(dateValue);
+      }
+
+      function submitSpecialDate() {
+        const date = els.specialDate.value;
+        const label = els.specialLabel.value.trim();
+        const repeatAnnually = els.repeatAnnually.value === 'true';
+        if (!date || !label) {
+          setStatus('Add both a date and a label.');
+          return;
+        }
+        setLoading(els.saveSpecialBtn, true, 'Add date');
+        setStatus('Saving special date...');
+        google.script.run
+          .withSuccessHandler(() => {
+            els.specialDate.value = '';
+            els.specialLabel.value = '';
+            els.repeatAnnually.value = 'true';
+            setLoading(els.saveSpecialBtn, false, 'Add date');
+            setStatus('Special date saved.');
+            loadAppData(els.previewDate.value || state.previewDate || '');
+          })
+          .withFailureHandler(err => {
+            setLoading(els.saveSpecialBtn, false, 'Add date');
+            setStatus(err && err.message ? err.message : 'Failed to save special date.');
+          })
+          .addSpecialDate(date, label, repeatAnnually);
+      }
+
+      function wireEvents() {
+        els.entryForm.addEventListener('submit', event => { event.preventDefault(); submitEntry(); });
+        els.specialDateForm.addEventListener('submit', event => { event.preventDefault(); submitSpecialDate(); });
+        if (els.search) els.search.addEventListener('input', renderEntries);
+        if (els.sortMode) els.sortMode.addEventListener('change', renderEntries);
+        const refreshPreview = () => changePreviewDate(els.previewDate.value);
+        els.previewDate.addEventListener('change', refreshPreview);
+      }
+
+      wireEvents();
+      loadAppData();
+    </script>
+  </body>
 </html>

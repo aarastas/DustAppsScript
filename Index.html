@@ -974,6 +974,7 @@
         const contents = contentInput ? contentInput.value.trim() : '';
         const location = locationInput ? locationInput.value.trim() : '';
         const date = dateInput ? dateInput.value : '';
+        const currentEntry = state.entries.find(item => Number(item.rowNumber) === Number(rowNumber));
         if (!contents) {
           setStatus('Enter some text before saving.');
           return;
@@ -982,10 +983,22 @@
         setLoading(saveBtn, true, 'Save changes');
         setStatus('Saving entry...');
         google.script.run
-          .withSuccessHandler(() => {
+          .withSuccessHandler(entry => {
             setLoading(saveBtn, false, 'Save changes');
+            if (currentEntry && String(currentEntry.dateKey || '') !== String(date || '')) {
+              setStatus('Entry updated.');
+              loadAppData(currentPreviewDateKey());
+              return;
+            }
+            if (entry) {
+              upsertVisibleEntry(entry);
+            } else if (currentEntry) {
+              upsertVisibleEntry(Object.assign({}, currentEntry, {
+                content: contents,
+                location: location,
+              }));
+            }
             setStatus('Entry updated.');
-            loadAppData(els.previewDate.value || state.previewDate || '');
           })
           .withFailureHandler(err => {
             setLoading(saveBtn, false, 'Save changes');
@@ -998,6 +1011,24 @@
         const value = entry.modified || entry.timestamp || entry.dateKey;
         const parsed = Date.parse(value);
         return Number.isNaN(parsed) ? 0 : parsed;
+      }
+
+      function currentPreviewDateKey() {
+        return String(els.previewDate.value || state.previewDate || state.today || '');
+      }
+
+      function entryMatchesCurrentPreview(entry) {
+        return String(entry && entry.dateKey ? entry.dateKey : '') === currentPreviewDateKey();
+      }
+
+      function upsertVisibleEntry(entry) {
+        const index = state.entries.findIndex(item => Number(item.rowNumber) === Number(entry.rowNumber));
+        if (index >= 0) {
+          state.entries[index] = Object.assign({}, state.entries[index], entry);
+        } else {
+          state.entries.unshift(entry);
+        }
+        renderEntries();
       }
 
       function formatDateForDisplay(value) {
@@ -1017,12 +1048,14 @@
         setLoading(els.saveEntryBtn, true, 'Save entry');
         setStatus('Saving entry...');
         google.script.run
-          .withSuccessHandler(() => {
+          .withSuccessHandler(entry => {
             els.contents.value = '';
             els.entryLocation.value = '';
             setLoading(els.saveEntryBtn, false, 'Save entry');
+            if (entry && entryMatchesCurrentPreview(entry)) {
+              upsertVisibleEntry(entry);
+            }
             setStatus('Entry saved.');
-            loadAppData(els.previewDate.value || state.previewDate || '');
           })
           .withFailureHandler(err => {
             setLoading(els.saveEntryBtn, false, 'Save entry');

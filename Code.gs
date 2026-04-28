@@ -30,6 +30,15 @@ function doGet() {
 function getAppData(referenceDateInput) {
   const tz = Session.getScriptTimeZone();
   const referenceDate = parseDateInput_(referenceDateInput) || new Date();
+  const hasJournalSheet = !!getSheetIfExists_(JOURNAL_SHEET_NAME);
+  const hasSpecialDatesSheet = !!getSheetIfExists_(SPECIAL_DATES_SHEET_NAME);
+  if (hasJournalSheet && hasSpecialDatesSheet) {
+    const cached = getCachedAppData_(referenceDate, tz);
+    if (cached) {
+      return cached;
+    }
+  }
+
   const base = {
     user: { name: 'Signed in', email: '' },
     today: Utilities.formatDate(referenceDate, tz, 'yyyy-MM-dd'),
@@ -69,6 +78,9 @@ function getAppData(referenceDateInput) {
     base.entries = view.entries;
     base.specialDates = specialDates;
     base.view = view.meta;
+    if (hasJournalSheet && hasSpecialDatesSheet) {
+      setCachedAppData_(referenceDate, tz, base);
+    }
     return base;
   } catch (error) {
     base.specialDates = specialDates;
@@ -81,6 +93,9 @@ function getAppData(referenceDateInput) {
       targetKey: getViewKeyText_(referenceDate, tz),
       reason: error && error.message ? error.message : 'Failed to build view.',
     };
+    if (hasJournalSheet && hasSpecialDatesSheet) {
+      setCachedAppData_(referenceDate, tz, base);
+    }
     return base;
   }
 }
@@ -107,7 +122,8 @@ function addEntry(contents, customDate, location) {
   const timestamp = new Date();
 
   sheet.appendRow([timestamp, text, place, dateValue, '']);
-  return true;
+  invalidateAppDataCache_();
+  return buildEntrySnapshot_(sheet.getLastRow(), timestamp, text, place, dateValue, null);
 }
 
 function updateEntry(rowNumber, contents, customDate, location) {
@@ -131,7 +147,8 @@ function updateEntry(rowNumber, contents, customDate, location) {
   const modified = new Date();
 
   sheet.getRange(row, 1, 1, 5).setValues([[timestamp, text, place, dateValue, modified]]);
-  return true;
+  invalidateAppDataCache_();
+  return buildEntrySnapshot_(row, timestamp, text, place, dateValue, modified);
 }
 
 function addSpecialDate(labelOrDate, ruleTypeOrLabel, dateValue, ruleValue) {
@@ -161,6 +178,7 @@ function addSpecialDate(labelOrDate, ruleTypeOrLabel, dateValue, ruleValue) {
   }
 
   sheet.appendRow(['Holiday', text, true, ruleType, value, true]);
+  invalidateAppDataCache_();
   return true;
 }
 
@@ -178,6 +196,29 @@ function getUserInfo() {
   } catch (e) {
     return { name: 'Signed in', email: '' };
   }
+}
+
+function buildEntrySnapshot_(rowNumber, timestamp, content, location, entryDate, modified) {
+  const tz = Session.getScriptTimeZone();
+  const date = entryDate ? startOfDay_(entryDate) : null;
+  const stamp = timestamp ? new Date(timestamp) : null;
+  const change = modified ? new Date(modified) : null;
+
+  return {
+    rowNumber: rowNumber,
+    id: buildEntryId_(stamp || date, rowNumber),
+    timestamp: stamp ? stamp.toISOString() : '',
+    dateKey: date ? dateKey_(date, tz) : '',
+    displayDate: formatLongDisplayDate_(date || stamp, tz),
+    weekday: date ? Utilities.formatDate(date, tz, 'EEEE') : '',
+    content: String(content || ''),
+    location: String(location || ''),
+    modified: change ? change.toISOString() : '',
+    modifiedDisplay: change ? formatDisplayDate_(change, tz) : '',
+    labels: [],
+    viewKey: date ? getViewKeyNumber_(date, tz) : null,
+    viewKeyText: date ? getViewKeyText_(date, tz) : '',
+  };
 }
 
 function getEntries_(specialDates, tz) {
@@ -675,6 +716,49 @@ function getSheetIfExists_(name) {
 function getOrCreateSheet_(name) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   return ss.getSheetByName(name) || ss.insertSheet(name);
+}
+
+function getCachedAppData_(referenceDate, tz) {
+  const cache = CacheService.getUserCache();
+  const key = getAppDataCacheKey_(referenceDate, tz);
+  const cached = cache.get(key);
+  if (!cached) {
+    return null;
+  }
+
+  try {
+    return JSON.parse(cached);
+  } catch (error) {
+    return null;
+  }
+}
+
+function setCachedAppData_(referenceDate, tz, data) {
+  const cache = CacheService.getUserCache();
+  const key = getAppDataCacheKey_(referenceDate, tz);
+  try {
+    cache.put(key, JSON.stringify(data), 300);
+  } catch (error) {}
+}
+
+function getAppDataCacheKey_(referenceDate, tz) {
+  return [
+    'app-data',
+    dateKey_(referenceDate, tz),
+    String(tz || Session.getScriptTimeZone()),
+    getAppDataCacheVersion_(),
+  ].join('|');
+}
+
+function getAppDataCacheVersion_() {
+  const props = PropertiesService.getScriptProperties();
+  return String(props.getProperty('APP_DATA_CACHE_VERSION') || '0');
+}
+
+function invalidateAppDataCache_() {
+  const props = PropertiesService.getScriptProperties();
+  const current = Number(props.getProperty('APP_DATA_CACHE_VERSION') || '0');
+  props.setProperty('APP_DATA_CACHE_VERSION', String(current + 1));
 }
 
 function getOrCreateSpecialDatesSheet_(seedDefaults) {

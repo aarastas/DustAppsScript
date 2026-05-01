@@ -2,6 +2,8 @@
 <html>
   <head>
     <base target="_top">
+    <!-- Version policy: bump the Index.html version comment here and the matching INDEX_VERSION constant in this file whenever this file changes. -->
+    <!-- Version 1.9: Special-date versions are shown in the outer header and settings stay collapsed. -->
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
     <style>
       :root {
@@ -107,6 +109,15 @@
         display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 14px;
       }
       .panel-head span, .small-note, .muted, .status { color: var(--muted); font-size: 0.92rem; }
+      .version-stack {
+        display: grid;
+        gap: 2px;
+        font-size: 0.92rem;
+        line-height: 1.35;
+      }
+      .version-stack strong {
+        font-weight: 400;
+      }
       label { display: block; margin-bottom: 6px; font-size: 0.95rem; color: var(--muted); }
       input, textarea, select, button { font: inherit; }
       input, textarea, select {
@@ -367,12 +378,27 @@
 
         <section class="panel">
           <div class="panel-head">
-            <h2>Special dates</h2>
-            <span>Shown as tags in On this day</span>
+            <div class="version-stack">
+              <strong>Code.gs <span id="codeVersionLabel">1.8</span></strong>
+              <strong>Index.html <span id="indexVersionLabel">1.9</span></strong>
+            </div>
           </div>
 
           <details id="specialDatesDetails">
-            <summary>Manage special dates</summary>
+            <summary>Settings</summary>
+            <div class="special-help">
+              Use this section to control special-date behavior and add or review special-date rules.
+            </div>
+            <div class="small-note" style="margin: 14px 0 8px;">Special date display</div>
+            <div style="margin: 0 0 14px;">
+              <label for="specialDateDisplayMode">Display mode</label>
+              <select id="specialDateDisplayMode" name="specialDateDisplayMode">
+                <option value="special-and-default">Show special matches first, then default matches</option>
+                <option value="special-only">Show only special matches</option>
+              </select>
+              <div class="special-rule-note">Choose whether tagged dates replace the default view or appear before it.</div>
+            </div>
+            <div class="small-note" style="margin: 14px 0 8px;">Add special date</div>
             <div class="special-help">
               Add birthdays, anniversaries, and other yearly tags here. Fixed date means the same month/day every year.
               For holidays that move each year, use Nth weekday or Relative to rule.
@@ -399,7 +425,7 @@
               </div>
             </form>
 
-            <div class="small-note" style="margin: 14px 0 10px;">Current SpecialDates sheet entries</div>
+            <div class="small-note" style="margin: 14px 0 10px;">Current special date rows</div>
             <div id="specialDates" class="special-list"></div>
           </details>
         </section>
@@ -414,7 +440,12 @@
         today: '',
         previewDate: '',
         view: null,
+        config: null,
+        versions: null,
       };
+
+      const INDEX_VERSION = '1.9';
+      const INDEX_CHANGELOG = 'v1.9 | Index.html | Special-date versions are shown in the outer header and settings stay collapsed.';
 
       const els = {
         todayPill: document.getElementById('todayPill'),
@@ -431,6 +462,9 @@
         entryLocation: document.getElementById('entryLocation'),
         previewDate: document.getElementById('previewDate'),
         contents: document.getElementById('contents'),
+        specialDateDisplayMode: document.getElementById('specialDateDisplayMode'),
+        codeVersionLabel: document.getElementById('codeVersionLabel'),
+        indexVersionLabel: document.getElementById('indexVersionLabel'),
         specialLabel: document.getElementById('specialLabel'),
         specialRuleType: document.getElementById('specialRuleType'),
         specialRuleFields: document.getElementById('specialRuleFields'),
@@ -441,6 +475,12 @@
 
       function setStatus(message) { els.status.textContent = message || ''; }
       function setLoading(button, isLoading, label) { button.disabled = isLoading; button.textContent = isLoading ? 'Working...' : label; }
+      function versionMeta() {
+        return {
+          indexVersion: INDEX_VERSION,
+          indexChangelog: INDEX_CHANGELOG,
+        };
+      }
 
       function loadAppData(referenceDate) {
         setStatus('Loading entries...');
@@ -453,6 +493,8 @@
             state.today = data.today || '';
             state.previewDate = data.previewDate || '';
             state.view = data.view || null;
+            state.config = data.config || state.config || null;
+            state.versions = data.versions || state.versions || null;
             renderShell();
             renderSpecialDates();
             renderEntries();
@@ -461,7 +503,7 @@
           .withFailureHandler(err => {
             setStatus(err && err.message ? err.message : 'Failed to load app data.');
           })
-          .getAppData(dateArg);
+          .getAppData(dateArg, versionMeta());
       }
 
       function renderShell() {
@@ -471,6 +513,15 @@
           : 'Signed in';
         els.entryDate.value = state.today || els.entryDate.value;
         els.previewDate.value = state.previewDate || state.today || '';
+        if (els.specialDateDisplayMode && state.config && state.config.specialDateDisplayMode) {
+          els.specialDateDisplayMode.value = state.config.specialDateDisplayMode;
+        }
+        if (els.codeVersionLabel) {
+          els.codeVersionLabel.textContent = state.versions && state.versions.codeVersion ? state.versions.codeVersion : '';
+        }
+        if (els.indexVersionLabel) {
+          els.indexVersionLabel.textContent = state.versions && state.versions.indexVersion ? state.versions.indexVersion : '';
+        }
         els.viewInfo.textContent = state.view
           ? (state.view.mode === 'special'
             ? (state.view.title || '')
@@ -760,7 +811,7 @@
       }
 
       function formatMonthDay(value) {
-        const match = String(value || '').trim().match(/^(\d{1,2})\/(\d{1,2})$/);
+        const match = String(value || '').trim().match(/^(\d{1,2})\/(\d{1,2})(?:\/\d{2,4})?$/);
         if (!match) return value;
         const month = Number(match[1]) - 1;
         const day = Number(match[2]);
@@ -803,6 +854,7 @@
       function renderEntries() {
         const query = els.search ? (els.search.value || '').trim().toLowerCase() : '';
         const mode = els.sortMode ? els.sortMode.value : 'newest';
+        const specialContext = Array.isArray(state.view && state.view.labels) && state.view.labels.length > 0;
         const entries = state.entries
           .filter(entry => {
             if (!query) return true;
@@ -817,6 +869,13 @@
           })
           .slice()
           .sort((a, b) => {
+            if (specialContext) {
+              const aSpecial = a && a.specialMatch ? 1 : 0;
+              const bSpecial = b && b.specialMatch ? 1 : 0;
+              if (aSpecial !== bSpecial) {
+                return bSpecial - aSpecial;
+              }
+            }
             const aTime = safeTime(a);
             const bTime = safeTime(b);
             return mode === 'oldest' ? aTime - bTime : bTime - aTime;
@@ -1004,7 +1063,7 @@
             setLoading(saveBtn, false, 'Save changes');
             setStatus(err && err.message ? err.message : 'Failed to update entry.');
           })
-          .updateEntry(rowNumber, contents, date, location);
+          .updateEntry(rowNumber, contents, date, location, versionMeta());
       }
 
       function safeTime(entry) {
@@ -1061,12 +1120,30 @@
             setLoading(els.saveEntryBtn, false, 'Save entry');
             setStatus(err && err.message ? err.message : 'Failed to save entry.');
           })
-          .addEntry(contents, els.entryDate.value, location);
+          .addEntry(contents, els.entryDate.value, location, versionMeta());
       }
 
       function changePreviewDate(dateValue) {
         setStatus('Updating preview date...');
         loadAppData(dateValue);
+      }
+
+      function changeSpecialDateDisplayMode() {
+        if (!els.specialDateDisplayMode) return;
+        const mode = els.specialDateDisplayMode.value;
+        setStatus('Saving display mode...');
+        els.specialDateDisplayMode.disabled = true;
+        google.script.run
+          .withSuccessHandler(config => {
+            state.config = config || state.config || null;
+            els.specialDateDisplayMode.disabled = false;
+            loadAppData(currentPreviewDateKey());
+          })
+          .withFailureHandler(err => {
+            els.specialDateDisplayMode.disabled = false;
+            setStatus(err && err.message ? err.message : 'Failed to save display mode.');
+          })
+          .setAppConfig({ specialDateDisplayMode: mode }, versionMeta());
       }
 
       function submitSpecialDate() {
@@ -1150,13 +1227,14 @@
             setLoading(els.saveSpecialBtn, false, 'Add date');
             setStatus(err && err.message ? err.message : 'Failed to save special date.');
           })
-          .addSpecialDate(label, ruleType, date, ruleValue);
+          .addSpecialDate(label, ruleType, date, ruleValue, versionMeta());
       }
 
       function wireEvents() {
         els.entryForm.addEventListener('submit', event => { event.preventDefault(); submitEntry(); });
         els.specialDateForm.addEventListener('submit', event => { event.preventDefault(); submitSpecialDate(); });
         els.specialRuleType.addEventListener('change', renderSpecialRuleFields);
+        if (els.specialDateDisplayMode) els.specialDateDisplayMode.addEventListener('change', changeSpecialDateDisplayMode);
         if (els.search) els.search.addEventListener('input', renderEntries);
         if (els.sortMode) els.sortMode.addEventListener('change', renderEntries);
         const refreshPreview = () => changePreviewDate(els.previewDate.value);

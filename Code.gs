@@ -1,5 +1,15 @@
+// Version policy:
+// Bump `CODE_VERSION` when Code.gs changes.
+// Index.html owns its own version constants and sends them in client calls.
+// Keep the summary comments below current so future edits are traceable.
 const JOURNAL_SHEET_NAME = 'Dust';
 const SPECIAL_DATES_SHEET_NAME = 'SpecialDates';
+const DUST_META_SHEET_NAME = 'DustMeta';
+const SPECIAL_DATE_DISPLAY_MODE_PROPERTY = 'DUST_SPECIAL_DATE_DISPLAY_MODE';
+const SPECIAL_DATE_DISPLAY_MODE_SPECIAL_ONLY = 'special-only';
+const SPECIAL_DATE_DISPLAY_MODE_SPECIAL_AND_DEFAULT = 'special-and-default';
+const CODE_VERSION = '1.8'; // Version 1.8: Code.gs owns only its own version metadata and accepts HTML version data from the client.
+const CODE_CHANGELOG = 'v1.8 | Code.gs | Code.gs owns only its own version metadata and accepts HTML version data from the client.';
 const SPECIAL_DATE_HEADER = ['Type', 'Label', 'RepeatAnnually', 'RuleType', 'RuleValue', 'Enabled'];
 const DEFAULT_SPECIAL_DATE_ROWS = [
   { type: 'Holiday', label: "New Year's Day", ruleType: 'fixed-month-day', ruleValue: '1/1', repeatAnnually: true },
@@ -27,7 +37,11 @@ function doGet() {
     .addMetaTag('viewport', 'width=device-width, initial-scale=1, viewport-fit=cover');
 }
 
-function getAppData(referenceDateInput) {
+function getAppData(referenceDateInput, clientMeta) {
+  return getAppData_(referenceDateInput, clientMeta);
+}
+
+function getAppData_(referenceDateInput, clientMeta) {
   const tz = Session.getScriptTimeZone();
   const referenceDate = parseDateInput_(referenceDateInput) || new Date();
   const hasJournalSheet = !!getSheetIfExists_(JOURNAL_SHEET_NAME);
@@ -58,6 +72,8 @@ function getAppData(referenceDateInput) {
   try {
     base.user = getUserInfo();
   } catch (error) {}
+  base.config = getAppConfig_();
+  base.versions = getAppVersions_(clientMeta);
 
   let specialDates = [];
   try {
@@ -74,7 +90,7 @@ function getAppData(referenceDateInput) {
   }
 
   try {
-    const view = buildViewContext_(referenceDate, allEntries, specialDates, tz);
+    const view = buildViewContext_(referenceDate, allEntries, specialDates, tz, base.config);
     base.entries = view.entries;
     base.specialDates = specialDates;
     base.view = view.meta;
@@ -108,7 +124,66 @@ function getSpecialDates() {
   return getSpecialDates_();
 }
 
-function addEntry(contents, customDate, location) {
+function getAppConfig_() {
+  const props = PropertiesService.getUserProperties();
+  const mode = String(props.getProperty(SPECIAL_DATE_DISPLAY_MODE_PROPERTY) || SPECIAL_DATE_DISPLAY_MODE_SPECIAL_AND_DEFAULT).trim();
+  return {
+    specialDateDisplayMode: mode === SPECIAL_DATE_DISPLAY_MODE_SPECIAL_ONLY
+      ? SPECIAL_DATE_DISPLAY_MODE_SPECIAL_ONLY
+      : SPECIAL_DATE_DISPLAY_MODE_SPECIAL_AND_DEFAULT,
+  };
+}
+
+function getAppVersions_(clientMeta) {
+  return {
+    codeVersion: CODE_VERSION,
+    codeChangelog: CODE_CHANGELOG,
+    indexVersion: String(clientMeta && clientMeta.indexVersion ? clientMeta.indexVersion : ''),
+    indexChangelog: String(clientMeta && clientMeta.indexChangelog ? clientMeta.indexChangelog : ''),
+  };
+}
+
+function setAppConfig(config, clientMeta) {
+  const incoming = config || {};
+  const mode = String(incoming.specialDateDisplayMode || '').trim();
+  if (mode !== SPECIAL_DATE_DISPLAY_MODE_SPECIAL_ONLY && mode !== SPECIAL_DATE_DISPLAY_MODE_SPECIAL_AND_DEFAULT) {
+    throw new Error('Invalid special date display mode.');
+  }
+
+  const props = PropertiesService.getUserProperties();
+  props.setProperty(SPECIAL_DATE_DISPLAY_MODE_PROPERTY, mode);
+  invalidateAppDataCache_();
+  syncDustMeta_(clientMeta);
+  return getAppConfig_();
+}
+
+function syncDustMeta_(clientMeta) {
+  const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
+  if (!spreadsheet) {
+    return;
+  }
+
+  let sheet = spreadsheet.getSheetByName(DUST_META_SHEET_NAME);
+  if (!sheet) {
+    sheet = spreadsheet.insertSheet(DUST_META_SHEET_NAME);
+  }
+
+  const indexVersion = String(clientMeta && clientMeta.indexVersion ? clientMeta.indexVersion : '').trim();
+  const indexChangelog = String(clientMeta && clientMeta.indexChangelog ? clientMeta.indexChangelog : '').trim();
+  const rows = [
+    ['Key', 'Value'],
+    ['CodeVersion', CODE_VERSION],
+    ['CodeSummary', CODE_CHANGELOG],
+    ['IndexVersion', indexVersion],
+    ['IndexSummary', indexChangelog],
+    ['UpdatedAt', new Date().toISOString()],
+  ];
+
+  sheet.getRange(1, 1, rows.length, 2).setValues(rows);
+  sheet.hideSheet();
+}
+
+function addEntry(contents, customDate, location, clientMeta) {
   const sheet = getOrCreateSheet_(JOURNAL_SHEET_NAME);
   ensureJournalHeader_(sheet);
   const text = String(contents || '').trim();
@@ -123,10 +198,11 @@ function addEntry(contents, customDate, location) {
 
   sheet.appendRow([timestamp, text, place, dateValue, '']);
   invalidateAppDataCache_();
+  syncDustMeta_(clientMeta);
   return buildEntrySnapshot_(sheet.getLastRow(), timestamp, text, place, dateValue, null);
 }
 
-function updateEntry(rowNumber, contents, customDate, location) {
+function updateEntry(rowNumber, contents, customDate, location, clientMeta) {
   const sheet = getOrCreateSheet_(JOURNAL_SHEET_NAME);
   ensureJournalHeader_(sheet);
 
@@ -148,10 +224,11 @@ function updateEntry(rowNumber, contents, customDate, location) {
 
   sheet.getRange(row, 1, 1, 5).setValues([[timestamp, text, place, dateValue, modified]]);
   invalidateAppDataCache_();
+  syncDustMeta_(clientMeta);
   return buildEntrySnapshot_(row, timestamp, text, place, dateValue, modified);
 }
 
-function addSpecialDate(labelOrDate, ruleTypeOrLabel, dateValue, ruleValue) {
+function addSpecialDate(labelOrDate, ruleTypeOrLabel, dateValue, ruleValue, clientMeta) {
   const sheet = getOrCreateSpecialDatesSheet_(true);
   ensureSpecialDatesHeader_(sheet);
 
@@ -170,6 +247,8 @@ function addSpecialDate(labelOrDate, ruleTypeOrLabel, dateValue, ruleValue) {
     }
     const tz = Session.getScriptTimeZone();
     sheet.appendRow(['Holiday', text, true, 'fixed-month-day', Utilities.formatDate(date, tz, 'M/d'), true]);
+    invalidateAppDataCache_();
+    syncDustMeta_(clientMeta);
     return true;
   }
 
@@ -179,6 +258,7 @@ function addSpecialDate(labelOrDate, ruleTypeOrLabel, dateValue, ruleValue) {
 
   sheet.appendRow(['Holiday', text, true, ruleType, value, true]);
   invalidateAppDataCache_();
+  syncDustMeta_(clientMeta);
   return true;
 }
 
@@ -241,7 +321,7 @@ function getEntries_(specialDates, tz) {
     const timestamp = coerceDate_(row[0]);
     const content = String(row[1] ?? '').trim();
     const location = String(row[2] ?? '').trim();
-    const entryDate = coerceDate_(row[3]) || timestamp;
+    const entryDate = resolveJournalEntryDate_(row[3], timestamp);
     const modified = coerceDate_(row[4]);
     const labels = entryDate ? getLabelsForDate_(entryDate, specialDates, tz) : [];
     const viewKey = entryDate ? getViewKeyNumber_(entryDate, tz) : null;
@@ -269,10 +349,11 @@ function getEntries_(specialDates, tz) {
   });
 }
 
-function buildViewContext_(referenceDate, entries, specialDates, tz) {
+function buildViewContext_(referenceDate, entries, specialDates, tz, config) {
   const activeLabels = getLabelsForDate_(referenceDate, specialDates, tz);
   const targetKey = getViewKeyNumber_(referenceDate, tz);
   const targetKeyText = getViewKeyText_(referenceDate, tz);
+  const displayMode = getSpecialDateDisplayMode_(config);
 
   if (!entries.length) {
     return {
@@ -289,16 +370,45 @@ function buildViewContext_(referenceDate, entries, specialDates, tz) {
   }
 
   if (activeLabels.length) {
-    const matched = entries.filter(entry => hasAnyLabel_(entry.labels, activeLabels));
+    const specialMatches = entries
+      .filter(entry => hasAnyLabel_(entry.labels, activeLabels))
+      .map(entry => Object.assign({}, entry, { specialMatch: true }));
+    if (displayMode === SPECIAL_DATE_DISPLAY_MODE_SPECIAL_ONLY) {
+      return {
+        entries: specialMatches,
+        meta: {
+          mode: SPECIAL_DATE_DISPLAY_MODE_SPECIAL_ONLY,
+          referenceDate: dateKey_(referenceDate, tz),
+          title: activeLabels.join(', '),
+          labels: activeLabels,
+          targetKey: targetKeyText,
+          reason: 'Special date label override.',
+        },
+      };
+    }
+
+    const defaultMatches = getDefaultMatches_(entries, targetKey, targetKeyText)
+      .map(entry => Object.assign({}, entry, { specialMatch: false }));
+    const merged = [];
+    const seen = {};
+    specialMatches.concat(defaultMatches).forEach(entry => {
+      const key = entry && entry.rowNumber != null ? String(entry.rowNumber) : String(entry.id || '');
+      if (seen[key]) {
+        return;
+      }
+      seen[key] = true;
+      merged.push(entry);
+    });
+
     return {
-      entries: matched,
+      entries: merged,
       meta: {
         mode: 'special',
         referenceDate: dateKey_(referenceDate, tz),
         title: activeLabels.join(', '),
         labels: activeLabels,
         targetKey: targetKeyText,
-        reason: 'Special date or holiday label override.',
+        reason: 'Special date labels shown first, followed by default matches.',
       },
     };
   }
@@ -344,6 +454,49 @@ function buildViewContext_(referenceDate, entries, specialDates, tz) {
       reason: 'Closest weekday/week match found.',
     },
   };
+}
+
+function getDefaultMatches_(entries, targetKey, targetKeyText) {
+  const exact = entries.filter(entry => entry.viewKeyText === targetKeyText);
+  if (exact.length) {
+    return exact;
+  }
+
+  let minDiff = null;
+  entries.forEach(entry => {
+    if (typeof entry.viewKey !== 'number') {
+      return;
+    }
+    const diff = Math.abs(entry.viewKey - targetKey);
+    if (minDiff === null || diff < minDiff) {
+      minDiff = diff;
+    }
+  });
+
+  return minDiff === null
+    ? []
+    : entries.filter(entry => typeof entry.viewKey === 'number' && Math.abs(Math.abs(entry.viewKey - targetKey) - minDiff) < 1e-9);
+}
+
+function getSpecialDateDisplayMode_(config) {
+  const mode = String(config && config.specialDateDisplayMode ? config.specialDateDisplayMode : '').trim();
+  return mode === SPECIAL_DATE_DISPLAY_MODE_SPECIAL_ONLY
+    ? SPECIAL_DATE_DISPLAY_MODE_SPECIAL_ONLY
+    : SPECIAL_DATE_DISPLAY_MODE_SPECIAL_AND_DEFAULT;
+}
+
+function resolveJournalEntryDate_(entryDateValue, fallbackTimestamp) {
+  const resolved = parseDateInput_(entryDateValue);
+  if (resolved) {
+    return startOfDay_(resolved);
+  }
+
+  const hasValue = entryDateValue !== '' && entryDateValue !== null && entryDateValue !== undefined;
+  if (hasValue) {
+    return null;
+  }
+
+  return fallbackTimestamp ? startOfDay_(fallbackTimestamp) : null;
 }
 
 function getSpecialDates_() {
@@ -428,11 +581,15 @@ function isSpecialDateActiveFor_(item, date, dateKey, monthDayKey, tz) {
     return isHolidayRuleMatch_(item, date, tz);
   }
 
+  if (item.repeatAnnually && item.monthDayKey === monthDayKey) {
+    return true;
+  }
+
   if (item.dateKey === dateKey) {
     return true;
   }
 
-  return !!item.repeatAnnually && item.monthDayKey === monthDayKey;
+  return false;
 }
 
 function isHolidayRuleMatch_(item, date, tz) {
@@ -452,10 +609,14 @@ function getHolidayRuleDate_(year, ruleType, ruleValue, tz) {
 
   if (type === 'fixed-month-day') {
     const parts = value.split('/').map(part => Number(part.trim()));
-    if (parts.length !== 2 || parts.some(num => Number.isNaN(num))) {
+    if (parts.length >= 2 && !parts.some(num => Number.isNaN(num))) {
+      return new Date(year, parts[0] - 1, parts[1]);
+    }
+    const parsed = parseDateInput_(value);
+    if (!parsed) {
       return null;
     }
-    return new Date(year, parts[0] - 1, parts[1]);
+    return new Date(year, parsed.getMonth(), parsed.getDate());
   }
 
   if (type === 'easter') {
@@ -605,14 +766,25 @@ function parseSpecialDateRow_(row) {
     if (!second) {
       return null;
     }
-    return {
+    const rawRuleValue = String(fifth ?? '').trim();
+    const item = {
       type: first || 'Personal',
       label: second,
       repeatAnnually: toBoolean_(third),
       ruleType: String(fourth ?? '').trim(),
-      ruleValue: String(fifth ?? '').trim(),
+      ruleValue: rawRuleValue,
       enabled: row.length < 6 ? true : toBoolean_(sixth),
     };
+    const parsed = parseDateInput_(rawRuleValue);
+    if (parsed) {
+      const tz = Session.getScriptTimeZone();
+      if (String(item.ruleType || '').toLowerCase() === 'fixed-month-day') {
+        item.ruleValue = Utilities.formatDate(parsed, tz, 'M/d');
+      }
+      item.dateKey = dateKey_(parsed, tz);
+      item.monthDayKey = monthDayKey_(parsed, tz);
+    }
+    return item;
   }
 
   return null;

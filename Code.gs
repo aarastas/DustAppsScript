@@ -8,8 +8,8 @@ const DUST_META_SHEET_NAME = 'DustMeta';
 const SPECIAL_DATE_DISPLAY_MODE_PROPERTY = 'DUST_SPECIAL_DATE_DISPLAY_MODE';
 const SPECIAL_DATE_DISPLAY_MODE_SPECIAL_ONLY = 'special-only';
 const SPECIAL_DATE_DISPLAY_MODE_SPECIAL_AND_DEFAULT = 'special-and-default';
-const CODE_VERSION = '1.8'; // Version 1.8: Code.gs owns only its own version metadata and accepts HTML version data from the client.
-const CODE_CHANGELOG = 'v1.8 | Code.gs | Code.gs owns only its own version metadata and accepts HTML version data from the client.';
+const CODE_VERSION = '1.13'; // Version 1.13: Added a username-only display setting and defaulted it for the journal header.
+const CODE_CHANGELOG = 'v1.13 | Code.gs | Added a username-only display setting and defaulted it for the journal header.';
 const SPECIAL_DATE_HEADER = ['Type', 'Label', 'RepeatAnnually', 'RuleType', 'RuleValue', 'Enabled'];
 const DEFAULT_SPECIAL_DATE_ROWS = [
   { type: 'Holiday', label: "New Year's Day", ruleType: 'fixed-month-day', ruleValue: '1/1', repeatAnnually: true },
@@ -31,9 +31,10 @@ const DEFAULT_SPECIAL_DATE_ROWS = [
   { type: 'Holiday', label: 'General Conference Saturday', ruleType: 'relative', ruleValue: 'nth-weekday|1,0,9|-1', repeatAnnually: true },
 ];
 
-function doGet() {
+function doGet(e) {
   return HtmlService.createHtmlOutputFromFile('Index')
     .setTitle('Dust Journal')
+    .setFaviconUrl('https://raw.githubusercontent.com/aarastas/DustAppsScript/main/favicon-32x32.png')
     .addMetaTag('viewport', 'width=device-width, initial-scale=1, viewport-fit=cover');
 }
 
@@ -127,10 +128,12 @@ function getSpecialDates() {
 function getAppConfig_() {
   const props = PropertiesService.getUserProperties();
   const mode = String(props.getProperty(SPECIAL_DATE_DISPLAY_MODE_PROPERTY) || SPECIAL_DATE_DISPLAY_MODE_SPECIAL_AND_DEFAULT).trim();
+  const userDisplayMode = String(props.getProperty('DUST_USER_DISPLAY_MODE') || 'username-only').trim();
   return {
     specialDateDisplayMode: mode === SPECIAL_DATE_DISPLAY_MODE_SPECIAL_ONLY
       ? SPECIAL_DATE_DISPLAY_MODE_SPECIAL_ONLY
       : SPECIAL_DATE_DISPLAY_MODE_SPECIAL_AND_DEFAULT,
+    userDisplayMode: userDisplayMode === 'full' ? 'full' : 'username-only',
   };
 }
 
@@ -146,12 +149,17 @@ function getAppVersions_(clientMeta) {
 function setAppConfig(config, clientMeta) {
   const incoming = config || {};
   const mode = String(incoming.specialDateDisplayMode || '').trim();
+  const userDisplayMode = String(incoming.userDisplayMode || '').trim();
   if (mode !== SPECIAL_DATE_DISPLAY_MODE_SPECIAL_ONLY && mode !== SPECIAL_DATE_DISPLAY_MODE_SPECIAL_AND_DEFAULT) {
     throw new Error('Invalid special date display mode.');
+  }
+  if (userDisplayMode !== '' && userDisplayMode !== 'full' && userDisplayMode !== 'username-only') {
+    throw new Error('Invalid user display mode.');
   }
 
   const props = PropertiesService.getUserProperties();
   props.setProperty(SPECIAL_DATE_DISPLAY_MODE_PROPERTY, mode);
+  props.setProperty('DUST_USER_DISPLAY_MODE', userDisplayMode === 'full' ? 'full' : 'username-only');
   invalidateAppDataCache_();
   syncDustMeta_(clientMeta);
   return getAppConfig_();

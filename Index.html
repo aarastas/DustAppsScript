@@ -3,8 +3,14 @@
   <head>
     <base target="_top">
     <!-- Version policy: bump the Index.html version comment here and the matching INDEX_VERSION constant in this file whenever this file changes. -->
-    <!-- Version 1.9: Special-date versions are shown in the outer header and settings stay collapsed. -->
+    <!-- Version 1.13: Added username-only display and collapsible journal/view sections. -->
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <meta name="apple-mobile-web-app-title" content="Dust">
+    <link rel="apple-touch-icon" sizes="180x180" href="https://raw.githubusercontent.com/aarastas/DustAppsScript/main/apple-touch-icon.png">
+    <link rel="apple-touch-icon-precomposed" sizes="180x180" href="https://raw.githubusercontent.com/aarastas/DustAppsScript/main/apple-touch-icon.png">
+    <link rel="icon" type="image/png" sizes="192x192" href="https://raw.githubusercontent.com/aarastas/DustAppsScript/main/android-chrome-192x192.png">
     <style>
       :root {
         color-scheme: light;
@@ -86,19 +92,13 @@
         white-space: nowrap;
       }
       .header-user {
-        color: var(--accent);
+        color: rgba(99, 59, 23, 0.50);
         font-size: 0.92rem;
         font-style: italic;
         line-height: 1.2;
         white-space: nowrap;
       }
-      .header-meta {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 14px;
-        align-items: baseline;
-        justify-content: flex-end;
-      }
+      .header-meta { display: flex; flex-wrap: wrap; gap: 14px; align-items: baseline; justify-content: flex-end; }
       .pill {
         display: inline-flex; align-items: center; min-height: 40px; padding: 8px 12px;
         border-radius: 999px; background: rgba(141, 90, 43, 0.10); color: var(--accent-strong); font-size: 0.95rem;
@@ -109,12 +109,7 @@
         display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 14px;
       }
       .panel-head span, .small-note, .muted, .status { color: var(--muted); font-size: 0.92rem; }
-      .version-stack {
-        display: grid;
-        gap: 2px;
-        font-size: 0.92rem;
-        line-height: 1.35;
-      }
+      .version-stack { display: grid; gap: 2px; font-size: 0.92rem; line-height: 1.35; color: rgba(99, 59, 23, 0.50); }
       .version-stack strong {
         font-weight: 400;
       }
@@ -175,21 +170,42 @@
       .chip {
         display: inline-flex;
         align-items: center;
-        min-height: 18px;
-        padding: 1px 7px;
+        min-height: 30px;
+        padding: 5px 10px;
         border-radius: 999px;
         background: var(--chip);
         color: var(--accent-strong);
-        font-size: 0.68rem;
+        font-size: 0.78rem;
         line-height: 1;
       }
       .entry-card .chip, .special-card .chip {
-        min-height: 18px;
-        padding: 1px 7px;
-        font-size: 0.68rem;
+        min-height: 30px;
+        padding: 5px 10px;
+        font-size: 0.78rem;
       }
       .special-card .chip {
         background: rgba(141, 90, 43, 0.12);
+      }
+      .chip.location-chip {
+        background: rgba(111, 128, 108, 0.16);
+        color: #4f6250;
+      }
+      .chip.special-chip {
+        background: rgba(141, 90, 43, 0.16);
+        color: var(--accent-strong);
+      }
+      details > summary.panel-head {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: 12px;
+        margin-bottom: 14px;
+      }
+      details > summary.panel-head::-webkit-details-marker {
+        display: none;
+      }
+      details[open] > summary.panel-head {
+        margin-bottom: 14px;
       }
       .special-line {
         display: flex;
@@ -316,17 +332,18 @@
 
       <div class="grid">
         <section class="panel">
-          <div class="panel-head">
-            <h2>On this day</h2>
-            <span id="entryCount">Loading...</span>
-          </div>
+          <details id="onThisDayDetails" open>
+            <summary class="panel-head">
+              <h2>On this day</h2>
+              <span id="entryCount">Loading...</span>
+            </summary>
 
-          <div class="toolbar">
-            <div class="view-row">
-              <div>
-                <input type="date" id="previewDate" aria-label="Preview date">
-              </div>
-              <div class="view-info" id="viewInfo" aria-live="polite"></div>
+            <div class="toolbar">
+              <div class="view-row">
+                <div>
+                  <input type="date" id="previewDate" aria-label="Preview date">
+                </div>
+                <div class="view-info" id="viewInfo" aria-live="polite"></div>
             </div>
             <!-- Search and sort retained in JS for future use.
             <div class="filter-row">
@@ -343,10 +360,11 @@
               </div>
             </div>
             -->
-            <div class="status" id="status"></div>
-          </div>
+              <div class="status" id="status"></div>
+            </div>
 
-          <div id="entries" class="entry-list"></div>
+            <div id="entries" class="entry-list"></div>
+          </details>
         </section>
 
         <section class="panel">
@@ -379,8 +397,8 @@
         <section class="panel">
           <div class="panel-head">
             <div class="version-stack">
-              <strong>Code.gs <span id="codeVersionLabel">1.8</span></strong>
-              <strong>Index.html <span id="indexVersionLabel">1.9</span></strong>
+              <strong>Code.gs <span id="codeVersionLabel">1.13</span></strong>
+              <strong>Index.html <span id="indexVersionLabel">1.13</span></strong>
             </div>
           </div>
 
@@ -397,6 +415,14 @@
                 <option value="special-only">Show only special matches</option>
               </select>
               <div class="special-rule-note">Choose whether tagged dates replace the default view or appear before it.</div>
+            </div>
+            <div style="margin: 0 0 14px;">
+              <label for="userDisplayMode">Header name</label>
+              <select id="userDisplayMode" name="userDisplayMode">
+                <option value="username-only">Username only</option>
+                <option value="full">Name and email</option>
+              </select>
+              <div class="special-rule-note">Show just the username in the Journal header by default.</div>
             </div>
             <div class="small-note" style="margin: 14px 0 8px;">Add special date</div>
             <div class="special-help">
@@ -444,8 +470,8 @@
         versions: null,
       };
 
-      const INDEX_VERSION = '1.9';
-      const INDEX_CHANGELOG = 'v1.9 | Index.html | Special-date versions are shown in the outer header and settings stay collapsed.';
+      const INDEX_VERSION = '1.13';
+      const INDEX_CHANGELOG = 'v1.13 | Index.html | Added username-only display and collapsible journal/view sections.';
 
       const els = {
         todayPill: document.getElementById('todayPill'),
@@ -463,6 +489,7 @@
         previewDate: document.getElementById('previewDate'),
         contents: document.getElementById('contents'),
         specialDateDisplayMode: document.getElementById('specialDateDisplayMode'),
+        userDisplayMode: document.getElementById('userDisplayMode'),
         codeVersionLabel: document.getElementById('codeVersionLabel'),
         indexVersionLabel: document.getElementById('indexVersionLabel'),
         specialLabel: document.getElementById('specialLabel'),
@@ -508,13 +535,14 @@
 
       function renderShell() {
         els.todayPill.textContent = state.today ? formatDateForDisplay(state.today) : '';
-        els.userPill.textContent = state.user && state.user.name
-          ? (state.user.email ? `${state.user.name} (${state.user.email})` : state.user.name)
-          : 'Signed in';
+        els.userPill.textContent = formatUserHeader(state.user);
         els.entryDate.value = state.today || els.entryDate.value;
         els.previewDate.value = state.previewDate || state.today || '';
         if (els.specialDateDisplayMode && state.config && state.config.specialDateDisplayMode) {
           els.specialDateDisplayMode.value = state.config.specialDateDisplayMode;
+        }
+        if (els.userDisplayMode && state.config && state.config.userDisplayMode) {
+          els.userDisplayMode.value = state.config.userDisplayMode;
         }
         if (els.codeVersionLabel) {
           els.codeVersionLabel.textContent = state.versions && state.versions.codeVersion ? state.versions.codeVersion : '';
@@ -556,7 +584,7 @@
           date.className = 'special-date-meta';
           date.textContent = describeSpecialDate(item);
           const repeat = document.createElement('span');
-          repeat.className = 'chip';
+          repeat.className = 'chip special-chip';
           repeat.textContent = String(item.type || '').toLowerCase() === 'holiday'
             ? 'Annual'
             : 'Fixed date';
@@ -921,8 +949,8 @@
         });
         if (entry.location) {
           const chip = document.createElement('span');
-          chip.className = 'chip';
-          chip.textContent = `Location: ${entry.location}`;
+          chip.className = 'chip location-chip';
+          chip.textContent = entry.location;
           chips.appendChild(chip);
         }
         const editBtn = document.createElement('button');
@@ -1072,6 +1100,15 @@
         return Number.isNaN(parsed) ? 0 : parsed;
       }
 
+      function formatUserHeader(user) {
+        if (!user) return 'Signed in';
+        const mode = String(state.config && state.config.userDisplayMode ? state.config.userDisplayMode : 'username-only');
+        if (mode === 'full' && user.email) {
+          return `${user.name || user.email} (${user.email})`;
+        }
+        return user.name || user.email || 'Signed in';
+      }
+
       function currentPreviewDateKey() {
         return String(els.previewDate.value || state.previewDate || state.today || '');
       }
@@ -1144,6 +1181,41 @@
             setStatus(err && err.message ? err.message : 'Failed to save display mode.');
           })
           .setAppConfig({ specialDateDisplayMode: mode }, versionMeta());
+      }
+
+      function changeUserDisplayMode() {
+        if (!els.userDisplayMode) return;
+        const mode = els.userDisplayMode.value;
+        setStatus('Saving header setting...');
+        els.userDisplayMode.disabled = true;
+        google.script.run
+          .withSuccessHandler(config => {
+            state.config = config || state.config || null;
+            els.userDisplayMode.disabled = false;
+            renderShell();
+            setStatus('');
+          })
+          .withFailureHandler(err => {
+            els.userDisplayMode.disabled = false;
+            setStatus(err && err.message ? err.message : 'Failed to save header setting.');
+          })
+          .setAppConfig({
+            specialDateDisplayMode: els.specialDateDisplayMode ? els.specialDateDisplayMode.value : (state.config && state.config.specialDateDisplayMode) || 'special-and-default',
+            userDisplayMode: mode,
+          }, versionMeta());
+      }
+
+      function getBrowserLocationHint() {
+        if (!navigator.geolocation || !els.entryLocation) return;
+        if (els.entryLocation.value.trim()) return;
+        navigator.geolocation.getCurrentPosition(position => {
+          const coords = position && position.coords
+            ? `${position.coords.latitude.toFixed(4)}, ${position.coords.longitude.toFixed(4)}`
+            : '';
+          if (coords && !els.entryLocation.value.trim()) {
+            els.entryLocation.value = coords;
+          }
+        }, () => {}, { maximumAge: 600000, timeout: 3000, enableHighAccuracy: false });
       }
 
       function submitSpecialDate() {
@@ -1235,6 +1307,7 @@
         els.specialDateForm.addEventListener('submit', event => { event.preventDefault(); submitSpecialDate(); });
         els.specialRuleType.addEventListener('change', renderSpecialRuleFields);
         if (els.specialDateDisplayMode) els.specialDateDisplayMode.addEventListener('change', changeSpecialDateDisplayMode);
+        if (els.userDisplayMode) els.userDisplayMode.addEventListener('change', changeUserDisplayMode);
         if (els.search) els.search.addEventListener('input', renderEntries);
         if (els.sortMode) els.sortMode.addEventListener('change', renderEntries);
         const refreshPreview = () => changePreviewDate(els.previewDate.value);
@@ -1243,6 +1316,7 @@
 
       wireEvents();
       renderSpecialRuleFields();
+      getBrowserLocationHint();
       loadAppData();
     </script>
   </body>

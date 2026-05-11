@@ -3,7 +3,7 @@
   <head>
     <base target="_top">
     <!-- Version policy: bump the Index.html version comment here and the matching INDEX_VERSION constant in this file whenever this file changes. -->
-    <!-- Version 1.13: Added username-only display and collapsible journal/view sections. -->
+    <!-- Version 1.21: Removed the explicit current-location button and kept background lookup. -->
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="default">
@@ -252,6 +252,7 @@
       }
       .entry-content { white-space: pre-wrap; word-break: break-word; }
       .entry-meta { margin-top: 8px; color: var(--muted); font-size: 0.9rem; }
+      .locating-note { margin-top: 6px; color: var(--muted); font-size: 0.8rem; font-style: italic; }
       .toolbar { display: grid; gap: 12px; grid-template-columns: 1fr; margin-bottom: 14px; }
       .view-info {
         display: flex;
@@ -381,7 +382,9 @@
               </div>
               <div class="entry-location-field">
                 <label for="entryLocation">Location</label>
-                <input type="text" id="entryLocation" name="entryLocation" placeholder="Seattle, WA">
+                <input type="text" id="entryLocation" name="entryLocation" placeholder="City, ST">
+                <input type="hidden" id="entryGps" name="entryGps">
+                <div id="locationHint" class="locating-note hidden">Locating...</div>
               </div>
               <div class="entry-content-field">
                 <label for="contents">Entry text</label>
@@ -470,8 +473,8 @@
         versions: null,
       };
 
-      const INDEX_VERSION = '1.13';
-      const INDEX_CHANGELOG = 'v1.13 | Index.html | Added username-only display and collapsible journal/view sections.';
+      const INDEX_VERSION = '1.21';
+      const INDEX_CHANGELOG = 'v1.21 | Index.html | Removed the explicit current-location button and kept background lookup.';
 
       const els = {
         todayPill: document.getElementById('todayPill'),
@@ -486,6 +489,8 @@
         specialDateForm: document.getElementById('specialDateForm'),
         entryDate: document.getElementById('entryDate'),
         entryLocation: document.getElementById('entryLocation'),
+        entryGps: document.getElementById('entryGps'),
+        locationHint: document.getElementById('locationHint'),
         previewDate: document.getElementById('previewDate'),
         contents: document.getElementById('contents'),
         specialDateDisplayMode: document.getElementById('specialDateDisplayMode'),
@@ -1008,6 +1013,11 @@
         locationInput.value = entry.location || '';
         locationField.appendChild(locationLabel);
         locationField.appendChild(locationInput);
+        const gpsInput = document.createElement('input');
+        gpsInput.type = 'hidden';
+        gpsInput.name = 'gpsCoordinate';
+        gpsInput.value = entry.gpsCoordinate || '';
+        locationField.appendChild(gpsInput);
 
         const contentField = document.createElement('div');
         const contentLabel = document.createElement('label');
@@ -1067,6 +1077,7 @@
           return;
         }
         const saveBtn = form.querySelector('button[type="submit"]');
+        const gpsInput = form.querySelector('input[type="hidden"][name="gpsCoordinate"]');
         setLoading(saveBtn, true, 'Save changes');
         setStatus('Saving entry...');
         google.script.run
@@ -1091,7 +1102,7 @@
             setLoading(saveBtn, false, 'Save changes');
             setStatus(err && err.message ? err.message : 'Failed to update entry.');
           })
-          .updateEntry(rowNumber, contents, date, location, versionMeta());
+          .updateEntry(rowNumber, contents, date, location, gpsInput ? gpsInput.value : '', versionMeta());
       }
 
       function safeTime(entry) {
@@ -1137,6 +1148,7 @@
       function submitEntry() {
         const contents = els.contents.value.trim();
         const location = els.entryLocation.value.trim();
+        const gpsCoordinate = els.entryGps ? els.entryGps.value.trim() : '';
         if (!contents) {
           setStatus('Enter some text before saving.');
           return;
@@ -1147,6 +1159,7 @@
           .withSuccessHandler(entry => {
             els.contents.value = '';
             els.entryLocation.value = '';
+            if (els.entryGps) els.entryGps.value = '';
             setLoading(els.saveEntryBtn, false, 'Save entry');
             if (entry && entryMatchesCurrentPreview(entry)) {
               upsertVisibleEntry(entry);
@@ -1157,7 +1170,7 @@
             setLoading(els.saveEntryBtn, false, 'Save entry');
             setStatus(err && err.message ? err.message : 'Failed to save entry.');
           })
-          .addEntry(contents, els.entryDate.value, location, versionMeta());
+          .addEntry(contents, els.entryDate.value, location, gpsCoordinate, versionMeta());
       }
 
       function changePreviewDate(dateValue) {
@@ -1206,16 +1219,54 @@
       }
 
       function getBrowserLocationHint() {
+        requestCurrentLocation();
+      }
+
+      function requestCurrentLocation() {
         if (!navigator.geolocation || !els.entryLocation) return;
         if (els.entryLocation.value.trim()) return;
+        if (els.locationHint) {
+          els.locationHint.textContent = 'Locating...';
+          els.locationHint.classList.remove('hidden');
+        }
         navigator.geolocation.getCurrentPosition(position => {
-          const coords = position && position.coords
-            ? `${position.coords.latitude.toFixed(4)}, ${position.coords.longitude.toFixed(4)}`
-            : '';
-          if (coords && !els.entryLocation.value.trim()) {
-            els.entryLocation.value = coords;
+          const gpsValue = `${position.coords.latitude.toFixed(6)}, ${position.coords.longitude.toFixed(6)}`;
+          if (els.entryGps) {
+            els.entryGps.value = gpsValue;
           }
-        }, () => {}, { maximumAge: 600000, timeout: 3000, enableHighAccuracy: false });
+          google.script.run
+            .withSuccessHandler(value => {
+              if (value && els.entryLocation && !els.entryLocation.value.trim()) {
+                els.entryLocation.value = value;
+                if (els.locationHint) {
+                  els.locationHint.textContent = 'Location found.';
+                }
+              } else if (els.locationHint) {
+                els.locationHint.textContent = 'Location not found.';
+              }
+              finishLocationLookup_();
+            })
+            .withFailureHandler(err => {
+              if (els.locationHint) {
+                els.locationHint.textContent = err && err.message ? err.message : 'Location lookup failed.';
+              }
+              finishLocationLookup_();
+            })
+            .resolveLocationDetails(position.coords.latitude, position.coords.longitude);
+        }, () => {
+          if (els.locationHint) {
+            els.locationHint.textContent = 'Location permission denied.';
+          }
+          finishLocationLookup_();
+        }, { maximumAge: 600000, timeout: 3000, enableHighAccuracy: false });
+      }
+
+      function finishLocationLookup_() {
+        window.setTimeout(() => {
+          if (els.locationHint) {
+            els.locationHint.classList.add('hidden');
+          }
+        }, 1200);
       }
 
       function submitSpecialDate() {

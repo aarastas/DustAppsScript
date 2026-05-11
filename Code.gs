@@ -8,8 +8,8 @@ const DUST_META_SHEET_NAME = 'DustMeta';
 const SPECIAL_DATE_DISPLAY_MODE_PROPERTY = 'DUST_SPECIAL_DATE_DISPLAY_MODE';
 const SPECIAL_DATE_DISPLAY_MODE_SPECIAL_ONLY = 'special-only';
 const SPECIAL_DATE_DISPLAY_MODE_SPECIAL_AND_DEFAULT = 'special-and-default';
-const CODE_VERSION = '1.13'; // Version 1.13: Added a username-only display setting and defaulted it for the journal header.
-const CODE_CHANGELOG = 'v1.13 | Code.gs | Added a username-only display setting and defaulted it for the journal header.';
+const CODE_VERSION = '1.16'; // Version 1.16: Improved reverse-geocode fallback handling and preserved GPS storage in column F.
+const CODE_CHANGELOG = 'v1.16 | Code.gs | Improved reverse-geocode fallback handling and preserved GPS storage in column F.';
 const SPECIAL_DATE_HEADER = ['Type', 'Label', 'RepeatAnnually', 'RuleType', 'RuleValue', 'Enabled'];
 const DEFAULT_SPECIAL_DATE_ROWS = [
   { type: 'Holiday', label: "New Year's Day", ruleType: 'fixed-month-day', ruleValue: '1/1', repeatAnnually: true },
@@ -191,11 +191,12 @@ function syncDustMeta_(clientMeta) {
   sheet.hideSheet();
 }
 
-function addEntry(contents, customDate, location, clientMeta) {
+function addEntry(contents, customDate, location, gpsCoordinate, clientMeta) {
   const sheet = getOrCreateSheet_(JOURNAL_SHEET_NAME);
   ensureJournalHeader_(sheet);
   const text = String(contents || '').trim();
-  const place = String(location || '').trim();
+  const resolvedLocation = String(location || '').trim();
+  const resolvedGps = normalizeGpsCoordinate_(gpsCoordinate);
 
   if (!text) {
     throw new Error('Entry text is required.');
@@ -203,14 +204,69 @@ function addEntry(contents, customDate, location, clientMeta) {
 
   const dateValue = parseDateInput_(customDate) || startOfDay_(new Date());
   const timestamp = new Date();
+  const place = resolvedLocation || reverseGeocodeLocation_(resolvedGps);
+  const row = [timestamp, text, place, dateValue, '', resolvedGps];
 
-  sheet.appendRow([timestamp, text, place, dateValue, '']);
+  sheet.appendRow(row);
   invalidateAppDataCache_();
   syncDustMeta_(clientMeta);
-  return buildEntrySnapshot_(sheet.getLastRow(), timestamp, text, place, dateValue, null);
+  return buildEntrySnapshot_(sheet.getLastRow(), timestamp, text, place, dateValue, null, resolvedGps);
 }
 
-function updateEntry(rowNumber, contents, customDate, location, clientMeta) {
+function reverseGeocodeLocation_(gpsCoordinate) {
+  const coords = parseGpsCoordinate_(gpsCoordinate);
+  if (!coords) {
+    return '';
+  }
+
+  const lat = coords.latitude;
+  const lon = coords.longitude;
+  const cache = CacheService.getUserCache();
+  const key = [
+    'reverse-geocode',
+    lat.toFixed(3),
+    lon.toFixed(3),
+  ].join('|');
+  const cached = cache.get(key);
+  if (cached) {
+    return cached;
+  }
+
+  const label = resolveLocationDetails_(lat, lon);
+  if (label) {
+    try {
+      cache.put(key, label, 21600);
+    } catch (error) {}
+  }
+  return label;
+}
+
+function resolveLocationDetails(latitude, longitude) {
+  const lat = Number(latitude);
+  const lon = Number(longitude);
+  if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
+    return '';
+  }
+
+  return resolveLocationDetailsFromGeocoder_(lat, lon);
+}
+
+function resolveLocationDetailsFromGeocoder_(latitude, longitude) {
+  const lat = Number(latitude);
+  const lon = Number(longitude);
+  if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
+    return '';
+  }
+
+  try {
+    const response = Maps.newGeocoder().reverseGeocode(lat, lon);
+    return formatCityStateFromGeocoderResponse_(response);
+  } catch (error) {
+    return '';
+  }
+}
+
+function updateEntry(rowNumber, contents, customDate, location, gpsCoordinate, clientMeta) {
   const sheet = getOrCreateSheet_(JOURNAL_SHEET_NAME);
   ensureJournalHeader_(sheet);
 
@@ -220,20 +276,24 @@ function updateEntry(rowNumber, contents, customDate, location, clientMeta) {
   }
 
   const text = String(contents || '').trim();
-  const place = String(location || '').trim();
+  const resolvedLocation = String(location || '').trim();
+  const resolvedGps = normalizeGpsCoordinate_(gpsCoordinate);
   if (!text) {
     throw new Error('Entry text is required.');
   }
 
-  const current = sheet.getRange(row, 1, 1, 5).getValues()[0];
+  const current = sheet.getRange(row, 1, 1, 6).getValues()[0];
   const timestamp = coerceDate_(current[0]) || new Date();
   const dateValue = parseDateInput_(customDate) || coerceDate_(current[3]) || startOfDay_(new Date());
   const modified = new Date();
 
-  sheet.getRange(row, 1, 1, 5).setValues([[timestamp, text, place, dateValue, modified]]);
+  const place = resolvedLocation || String(current[2] || '').trim() || reverseGeocodeLocation_(resolvedGps || current[5]);
+  const gps = resolvedGps || normalizeGpsCoordinate_(current[5]);
+
+  sheet.getRange(row, 1, 1, 6).setValues([[timestamp, text, place, dateValue, modified, gps]]);
   invalidateAppDataCache_();
   syncDustMeta_(clientMeta);
-  return buildEntrySnapshot_(row, timestamp, text, place, dateValue, modified);
+  return buildEntrySnapshot_(row, timestamp, text, place, dateValue, modified, gps);
 }
 
 function addSpecialDate(labelOrDate, ruleTypeOrLabel, dateValue, ruleValue, clientMeta) {
@@ -286,7 +346,7 @@ function getUserInfo() {
   }
 }
 
-function buildEntrySnapshot_(rowNumber, timestamp, content, location, entryDate, modified) {
+function buildEntrySnapshot_(rowNumber, timestamp, content, location, entryDate, modified, gpsCoordinate) {
   const tz = Session.getScriptTimeZone();
   const date = entryDate ? startOfDay_(entryDate) : null;
   const stamp = timestamp ? new Date(timestamp) : null;
@@ -301,6 +361,7 @@ function buildEntrySnapshot_(rowNumber, timestamp, content, location, entryDate,
     weekday: date ? Utilities.formatDate(date, tz, 'EEEE') : '',
     content: String(content || ''),
     location: String(location || ''),
+    gpsCoordinate: normalizeGpsCoordinate_(gpsCoordinate),
     modified: change ? change.toISOString() : '',
     modifiedDisplay: change ? formatDisplayDate_(change, tz) : '',
     labels: [],
@@ -331,6 +392,7 @@ function getEntries_(specialDates, tz) {
     const location = String(row[2] ?? '').trim();
     const entryDate = resolveJournalEntryDate_(row[3], timestamp);
     const modified = coerceDate_(row[4]);
+    const gpsCoordinate = normalizeGpsCoordinate_(row[5]);
     const labels = entryDate ? getLabelsForDate_(entryDate, specialDates, tz) : [];
     const viewKey = entryDate ? getViewKeyNumber_(entryDate, tz) : null;
     const viewKeyText = entryDate ? getViewKeyText_(entryDate, tz) : '';
@@ -344,6 +406,7 @@ function getEntries_(specialDates, tz) {
       weekday: entryDate ? Utilities.formatDate(entryDate, tz, 'EEEE') : '',
       content: content,
       location: location,
+      gpsCoordinate: gpsCoordinate,
       modified: modified ? modified.toISOString() : '',
       modifiedDisplay: modified ? formatDisplayDate_(modified, tz) : '',
       labels: labels,
@@ -850,6 +913,158 @@ function startOfDay_(date) {
   return new Date(date.getFullYear(), date.getMonth(), date.getDate());
 }
 
+function formatCityStateFromNominatim_(address) {
+  return formatCityStateFromAddressObject_(address);
+}
+
+function formatCityStateFromGeocoderResponse_(response) {
+  if (!response || !response.results || !response.results.length) {
+    return '';
+  }
+
+  for (let i = 0; i < response.results.length; i++) {
+    const value = formatCityStateFromGeocoderResult_(response.results[i]);
+    if (value) {
+      return value;
+    }
+  }
+
+  return '';
+}
+
+function formatCityStateFromGeocoderResult_(result) {
+  if (!result) {
+    return '';
+  }
+
+  if (result.address_components) {
+    const value = formatCityStateFromAddressComponents_(result.address_components);
+    if (value) {
+      return value;
+    }
+  }
+
+  if (result.address) {
+    const value = formatCityStateFromAddressObject_(result.address);
+    if (value) {
+      return value;
+    }
+  }
+
+  if (result.formatted_address) {
+    return formatCityStateFromFormattedAddress_(result.formatted_address);
+  }
+
+  return '';
+}
+
+function formatCityStateFromAddressComponents_(components) {
+  if (!components || !components.length) {
+    return '';
+  }
+
+  let city = '';
+  let state = '';
+  components.forEach(component => {
+    const types = Array.isArray(component.types) ? component.types : [];
+    if (!city && (types.indexOf('locality') !== -1 || types.indexOf('postal_town') !== -1 || types.indexOf('sublocality') !== -1)) {
+      city = String(component.long_name || component.short_name || '').trim();
+    }
+    if (!state && types.indexOf('administrative_area_level_1') !== -1) {
+      state = String(component.short_name || component.long_name || '').trim();
+    }
+  });
+
+  return joinCityState_(city, state);
+}
+
+function formatCityStateFromAddressObject_(address) {
+  if (!address) {
+    return '';
+  }
+
+  const city = String(
+    address.city ||
+    address.town ||
+    address.village ||
+    address.municipality ||
+    address.hamlet ||
+    address.locality ||
+    address.county ||
+    ''
+  ).trim();
+
+  let state = String(address.state_code || address.state || '').trim();
+  if (state && state.indexOf('-') !== -1) {
+    state = state.split('-').pop().trim();
+  }
+
+  return joinCityState_(city, state);
+}
+
+function formatCityStateFromFormattedAddress_(value) {
+  const text = String(value || '').trim();
+  if (!text) {
+    return '';
+  }
+
+  const parts = text.split(',').map(part => part.trim()).filter(Boolean);
+  if (parts.length >= 2) {
+    const city = parts[0];
+    const state = String(parts[1].split(/\s+/)[0] || '').trim();
+    return joinCityState_(city, state);
+  }
+
+  return text;
+}
+
+function joinCityState_(city, state) {
+  if (city && state) {
+    return city + ', ' + state;
+  }
+  return city || state || '';
+}
+
+function normalizeGpsCoordinate_(value) {
+  const coords = parseGpsCoordinate_(value);
+  if (!coords) {
+    return '';
+  }
+  return coords.latitude.toFixed(6) + ', ' + coords.longitude.toFixed(6);
+}
+
+function parseGpsCoordinate_(value) {
+  if (!value) {
+    return null;
+  }
+
+  if (typeof value === 'object' && value.latitude != null && value.longitude != null) {
+    const latObject = Number(value.latitude);
+    const lonObject = Number(value.longitude);
+    if (Number.isFinite(latObject) && Number.isFinite(lonObject)) {
+      return { latitude: latObject, longitude: lonObject };
+    }
+  }
+
+  const text = String(value || '').trim();
+  if (!text) {
+    return null;
+  }
+
+  const match = text.match(/^(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)$/);
+  if (!match) {
+    return null;
+  }
+
+  const latitude = Number(match[1]);
+  const longitude = Number(match[2]);
+  if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+    return null;
+  }
+
+  return { latitude: latitude, longitude: longitude };
+}
+
 function pad2_(value) {
   return String(value).padStart(2, '0');
 }
@@ -974,18 +1189,22 @@ function ensureSpecialDatesHeader_(sheet) {
 }
 
 function ensureJournalHeader_(sheet) {
-  const header = ['Timestamp', 'Content', 'Location', 'Date', 'Modified'];
+  const header = ['Timestamp', 'Content', 'Location', 'Date', 'Modified', 'GPSCoordinate'];
   if (sheet.getLastRow() === 0) {
-    sheet.getRange(1, 1, 1, 5).setValues([header]);
+    sheet.getRange(1, 1, 1, header.length).setValues([header]);
     return;
   }
 
-  const row = sheet.getRange(1, 1, 1, 5).getValues()[0];
+  const row = sheet.getRange(1, 1, 1, header.length).getValues()[0];
   const current = row.map(value => String(value || '').trim());
   const hasHeader = current[0] === 'Timestamp' || current[1] === 'Content' || current[2] === 'Date';
 
   if (!hasHeader) {
     return;
+  }
+
+  if (sheet.getLastColumn() < header.length || String(current[5] || '').trim() !== 'GPSCoordinate') {
+    sheet.getRange(1, 1, 1, header.length).setValues([header]);
   }
 }
 

@@ -3,7 +3,7 @@
   <head>
     <base target="_top">
     <!-- Version policy: bump the Index.html version comment here and the matching INDEX_VERSION constant in this file whenever this file changes. -->
-    <!-- Version 1.21: Removed the explicit current-location button and kept background lookup. -->
+    <!-- Version 1.23: Simplified photo handling to camera emoji controls in Today and On this day. -->
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="default">
@@ -190,6 +190,11 @@
         background: rgba(111, 128, 108, 0.16);
         color: #4f6250;
       }
+      .chip.photo-chip {
+        background: rgba(93, 101, 154, 0.16);
+        color: #47507f;
+        text-decoration: none;
+      }
       .chip.special-chip {
         background: rgba(141, 90, 43, 0.16);
         color: var(--accent-strong);
@@ -245,6 +250,11 @@
         display: grid;
         gap: 12px;
       }
+      .entry-photo-row {
+        display: grid;
+        gap: 6px;
+        margin-top: 10px;
+      }
       .entry-form-actions {
         display: flex;
         gap: 10px;
@@ -286,6 +296,36 @@
       .special-rule-fields .rule-group {
         display: grid;
         gap: 6px;
+      }
+      .label-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 6px;
+      }
+      .photo-trigger {
+        min-height: 28px;
+        width: 28px;
+        padding: 0;
+        border-radius: 999px;
+        background: rgba(141, 90, 43, 0.12);
+        color: var(--accent-strong);
+        box-shadow: none;
+        flex: 0 0 auto;
+      }
+      .photo-trigger:hover {
+        background: rgba(141, 90, 43, 0.18);
+      }
+      .visually-hidden {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        padding: 0;
+        margin: -1px;
+        overflow: hidden;
+        clip: rect(0, 0, 0, 0);
+        white-space: nowrap;
+        border: 0;
       }
       @media (min-width: 760px) {
         .hero { grid-template-columns: 1fr auto; align-items: end; }
@@ -387,8 +427,12 @@
                 <div id="locationHint" class="locating-note hidden">Locating...</div>
               </div>
               <div class="entry-content-field">
-                <label for="contents">Entry text</label>
+                <div class="label-row">
+                  <button type="button" id="entryPhotoBtn" class="photo-trigger" aria-label="Add photo" title="Add photo">📷</button>
+                  <label for="contents">Entry text</label>
+                </div>
                 <textarea id="contents" name="contents" placeholder="Do I contradict myself?"></textarea>
+                <input type="file" id="entryPhoto" name="entryPhoto" accept="image/*" class="visually-hidden">
               </div>
               <div class="entry-save">
                 <button type="submit" id="saveEntryBtn">Save entry</button>
@@ -400,8 +444,8 @@
         <section class="panel">
           <div class="panel-head">
             <div class="version-stack">
-              <strong>Code.gs <span id="codeVersionLabel">1.13</span></strong>
-              <strong>Index.html <span id="indexVersionLabel">1.13</span></strong>
+              <strong>Code.gs <span id="codeVersionLabel">1.18</span></strong>
+              <strong>Index.html <span id="indexVersionLabel">1.23</span></strong>
             </div>
           </div>
 
@@ -473,8 +517,8 @@
         versions: null,
       };
 
-      const INDEX_VERSION = '1.21';
-      const INDEX_CHANGELOG = 'v1.21 | Index.html | Removed the explicit current-location button and kept background lookup.';
+      const INDEX_VERSION = '1.23';
+      const INDEX_CHANGELOG = 'v1.23 | Index.html | Simplified photo handling to camera emoji controls in Today and On this day.';
 
       const els = {
         todayPill: document.getElementById('todayPill'),
@@ -490,6 +534,8 @@
         entryDate: document.getElementById('entryDate'),
         entryLocation: document.getElementById('entryLocation'),
         entryGps: document.getElementById('entryGps'),
+        entryPhotoBtn: document.getElementById('entryPhotoBtn'),
+        entryPhoto: document.getElementById('entryPhoto'),
         locationHint: document.getElementById('locationHint'),
         previewDate: document.getElementById('previewDate'),
         contents: document.getElementById('contents'),
@@ -958,6 +1004,16 @@
           chip.textContent = entry.location;
           chips.appendChild(chip);
         }
+        if (entry.photoUrl) {
+          const chip = document.createElement('a');
+          chip.className = 'chip photo-chip';
+          chip.href = entry.photoUrl;
+          chip.target = '_blank';
+          chip.rel = 'noopener noreferrer';
+          chip.textContent = '📷';
+          chip.title = 'Open attached photo';
+          chips.appendChild(chip);
+        }
         const editBtn = document.createElement('button');
         editBtn.type = 'button';
         editBtn.className = 'secondary entry-edit-btn';
@@ -1102,7 +1158,7 @@
             setLoading(saveBtn, false, 'Save changes');
             setStatus(err && err.message ? err.message : 'Failed to update entry.');
           })
-          .updateEntry(rowNumber, contents, date, location, gpsInput ? gpsInput.value : '', versionMeta());
+          .updateEntry(rowNumber, contents, date, location, gpsInput ? gpsInput.value : '', '', versionMeta());
       }
 
       function safeTime(entry) {
@@ -1145,32 +1201,50 @@
         return new Intl.DateTimeFormat(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' }).format(new Date(parsed));
       }
 
-      function submitEntry() {
-        const contents = els.contents.value.trim();
-        const location = els.entryLocation.value.trim();
-        const gpsCoordinate = els.entryGps ? els.entryGps.value.trim() : '';
-        if (!contents) {
-          setStatus('Enter some text before saving.');
-          return;
+      function readFileAsDataUrl(file) {
+        if (!file) return Promise.resolve('');
+        return new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(String(reader.result || ''));
+          reader.onerror = () => reject(reader.error || new Error('Unable to read file.'));
+          reader.readAsDataURL(file);
+        });
+      }
+
+      async function submitEntry() {
+        try {
+          const contents = els.contents.value.trim();
+          const location = els.entryLocation.value.trim();
+          const gpsCoordinate = els.entryGps ? els.entryGps.value.trim() : '';
+          const photoFile = els.entryPhoto && els.entryPhoto.files ? els.entryPhoto.files[0] : null;
+          const photoDataUrl = photoFile ? await readFileAsDataUrl(photoFile) : '';
+          if (!contents) {
+            setStatus('Enter some text before saving.');
+            return;
+          }
+          setLoading(els.saveEntryBtn, true, 'Save entry');
+          setStatus('Saving entry...');
+          google.script.run
+            .withSuccessHandler(entry => {
+              els.contents.value = '';
+              els.entryLocation.value = '';
+              if (els.entryGps) els.entryGps.value = '';
+              if (els.entryPhoto) els.entryPhoto.value = '';
+              setLoading(els.saveEntryBtn, false, 'Save entry');
+              if (entry && entryMatchesCurrentPreview(entry)) {
+                upsertVisibleEntry(entry);
+              }
+              setStatus('Entry saved.');
+            })
+            .withFailureHandler(err => {
+              setLoading(els.saveEntryBtn, false, 'Save entry');
+              setStatus(err && err.message ? err.message : 'Failed to save entry.');
+            })
+            .addEntry(contents, els.entryDate.value, location, gpsCoordinate, photoDataUrl, versionMeta());
+        } catch (error) {
+          setLoading(els.saveEntryBtn, false, 'Save entry');
+          setStatus(error && error.message ? error.message : 'Failed to read the selected photo.');
         }
-        setLoading(els.saveEntryBtn, true, 'Save entry');
-        setStatus('Saving entry...');
-        google.script.run
-          .withSuccessHandler(entry => {
-            els.contents.value = '';
-            els.entryLocation.value = '';
-            if (els.entryGps) els.entryGps.value = '';
-            setLoading(els.saveEntryBtn, false, 'Save entry');
-            if (entry && entryMatchesCurrentPreview(entry)) {
-              upsertVisibleEntry(entry);
-            }
-            setStatus('Entry saved.');
-          })
-          .withFailureHandler(err => {
-            setLoading(els.saveEntryBtn, false, 'Save entry');
-            setStatus(err && err.message ? err.message : 'Failed to save entry.');
-          })
-          .addEntry(contents, els.entryDate.value, location, gpsCoordinate, versionMeta());
       }
 
       function changePreviewDate(dateValue) {
@@ -1357,6 +1431,9 @@
         els.entryForm.addEventListener('submit', event => { event.preventDefault(); submitEntry(); });
         els.specialDateForm.addEventListener('submit', event => { event.preventDefault(); submitSpecialDate(); });
         els.specialRuleType.addEventListener('change', renderSpecialRuleFields);
+        if (els.entryPhotoBtn && els.entryPhoto) {
+          els.entryPhotoBtn.addEventListener('click', () => els.entryPhoto.click());
+        }
         if (els.specialDateDisplayMode) els.specialDateDisplayMode.addEventListener('change', changeSpecialDateDisplayMode);
         if (els.userDisplayMode) els.userDisplayMode.addEventListener('change', changeUserDisplayMode);
         if (els.search) els.search.addEventListener('input', renderEntries);

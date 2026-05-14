@@ -1,12 +1,14 @@
 {
-  "timeZone": "America/Los_Angeles",
-  "runtimeVersion": "V8",
-  "webapp": {
-    "access": "ANYONE",
-    "executeAs": "USER_ACCESSING"
-  },
-  "oauthScopes": [
-    "https://www.googleapis.com/auth/spreadsheets",
-    "https://www.googleapis.com/auth/drive"
-  ]
+ "timeZone": "America/Los_Angeles",
+ "dependencies": {},
+ "exceptionLogging": "STACKDRIVER",
+ "runtimeVersion": "V8",
+ "webapp": {
+  "access": "MYSELF",
+  "executeAs": "USER_DEPLOYING"
+ },
+"oauthScopes": [
+ "https://www.googleapis.com/auth/spreadsheets",
+ "https://www.googleapis.com/auth/drive"
+ ]
 }

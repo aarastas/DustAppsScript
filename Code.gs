@@ -8,8 +8,11 @@ const DUST_META_SHEET_NAME = 'DustMeta';
 const SPECIAL_DATE_DISPLAY_MODE_PROPERTY = 'DUST_SPECIAL_DATE_DISPLAY_MODE';
 const SPECIAL_DATE_DISPLAY_MODE_SPECIAL_ONLY = 'special-only';
 const SPECIAL_DATE_DISPLAY_MODE_SPECIAL_AND_DEFAULT = 'special-and-default';
-const CODE_VERSION = '1.16'; // Version 1.16: Improved reverse-geocode fallback handling and preserved GPS storage in column F.
-const CODE_CHANGELOG = 'v1.16 | Code.gs | Improved reverse-geocode fallback handling and preserved GPS storage in column F.';
+const PHOTO_FOLDER_NAME = 'Dust Photos';
+const JOURNAL_HEADER = ['Timestamp', 'Content', 'Location', 'Date', 'Modified', 'GPSCoordinate', 'Photo'];
+const PHOTO_COLUMN_INDEX = 7;
+const CODE_VERSION = '1.18'; // Version 1.18: Added photo attachments stored in a photo column and Drive-backed image formulas.
+const CODE_CHANGELOG = 'v1.18 | Code.gs | Added photo attachments stored in a photo column and Drive-backed image formulas.';
 const SPECIAL_DATE_HEADER = ['Type', 'Label', 'RepeatAnnually', 'RuleType', 'RuleValue', 'Enabled'];
 const DEFAULT_SPECIAL_DATE_ROWS = [
   { type: 'Holiday', label: "New Year's Day", ruleType: 'fixed-month-day', ruleValue: '1/1', repeatAnnually: true },
@@ -191,12 +194,13 @@ function syncDustMeta_(clientMeta) {
   sheet.hideSheet();
 }
 
-function addEntry(contents, customDate, location, gpsCoordinate, clientMeta) {
+function addEntry(contents, customDate, location, gpsCoordinate, photoDataUrl, clientMeta) {
   const sheet = getOrCreateSheet_(JOURNAL_SHEET_NAME);
   ensureJournalHeader_(sheet);
   const text = String(contents || '').trim();
   const resolvedLocation = String(location || '').trim();
   const resolvedGps = normalizeGpsCoordinate_(gpsCoordinate);
+  const photo = savePhotoAttachment_(photoDataUrl);
 
   if (!text) {
     throw new Error('Entry text is required.');
@@ -208,9 +212,12 @@ function addEntry(contents, customDate, location, gpsCoordinate, clientMeta) {
   const row = [timestamp, text, place, dateValue, '', resolvedGps];
 
   sheet.appendRow(row);
+  if (photo.url) {
+    sheet.getRange(sheet.getLastRow(), PHOTO_COLUMN_INDEX).setFormula(buildPhotoImageFormula_(photo.url));
+  }
   invalidateAppDataCache_();
   syncDustMeta_(clientMeta);
-  return buildEntrySnapshot_(sheet.getLastRow(), timestamp, text, place, dateValue, null, resolvedGps);
+  return buildEntrySnapshot_(sheet.getLastRow(), timestamp, text, place, dateValue, null, resolvedGps, photo.url);
 }
 
 function reverseGeocodeLocation_(gpsCoordinate) {
@@ -266,7 +273,7 @@ function resolveLocationDetailsFromGeocoder_(latitude, longitude) {
   }
 }
 
-function updateEntry(rowNumber, contents, customDate, location, gpsCoordinate, clientMeta) {
+function updateEntry(rowNumber, contents, customDate, location, gpsCoordinate, photoDataUrl, clientMeta) {
   const sheet = getOrCreateSheet_(JOURNAL_SHEET_NAME);
   ensureJournalHeader_(sheet);
 
@@ -278,11 +285,13 @@ function updateEntry(rowNumber, contents, customDate, location, gpsCoordinate, c
   const text = String(contents || '').trim();
   const resolvedLocation = String(location || '').trim();
   const resolvedGps = normalizeGpsCoordinate_(gpsCoordinate);
+  const photo = savePhotoAttachment_(photoDataUrl);
   if (!text) {
     throw new Error('Entry text is required.');
   }
 
-  const current = sheet.getRange(row, 1, 1, 6).getValues()[0];
+  const current = sheet.getRange(row, 1, 1, PHOTO_COLUMN_INDEX).getValues()[0];
+  const currentFormulas = sheet.getRange(row, 1, 1, PHOTO_COLUMN_INDEX).getFormulas()[0];
   const timestamp = coerceDate_(current[0]) || new Date();
   const dateValue = parseDateInput_(customDate) || coerceDate_(current[3]) || startOfDay_(new Date());
   const modified = new Date();
@@ -291,9 +300,13 @@ function updateEntry(rowNumber, contents, customDate, location, gpsCoordinate, c
   const gps = resolvedGps || normalizeGpsCoordinate_(current[5]);
 
   sheet.getRange(row, 1, 1, 6).setValues([[timestamp, text, place, dateValue, modified, gps]]);
+  if (photo.url) {
+    sheet.getRange(row, PHOTO_COLUMN_INDEX).setFormula(buildPhotoImageFormula_(photo.url));
+  }
+  const storedPhotoUrl = photo.url || extractPhotoUrlFromCell_(current[6], currentFormulas[6]);
   invalidateAppDataCache_();
   syncDustMeta_(clientMeta);
-  return buildEntrySnapshot_(row, timestamp, text, place, dateValue, modified, gps);
+  return buildEntrySnapshot_(row, timestamp, text, place, dateValue, modified, gps, storedPhotoUrl);
 }
 
 function addSpecialDate(labelOrDate, ruleTypeOrLabel, dateValue, ruleValue, clientMeta) {
@@ -346,7 +359,7 @@ function getUserInfo() {
   }
 }
 
-function buildEntrySnapshot_(rowNumber, timestamp, content, location, entryDate, modified, gpsCoordinate) {
+function buildEntrySnapshot_(rowNumber, timestamp, content, location, entryDate, modified, gpsCoordinate, photoUrl) {
   const tz = Session.getScriptTimeZone();
   const date = entryDate ? startOfDay_(entryDate) : null;
   const stamp = timestamp ? new Date(timestamp) : null;
@@ -362,6 +375,7 @@ function buildEntrySnapshot_(rowNumber, timestamp, content, location, entryDate,
     content: String(content || ''),
     location: String(location || ''),
     gpsCoordinate: normalizeGpsCoordinate_(gpsCoordinate),
+    photoUrl: String(photoUrl || ''),
     modified: change ? change.toISOString() : '',
     modifiedDisplay: change ? formatDisplayDate_(change, tz) : '',
     labels: [],
@@ -374,6 +388,7 @@ function getEntries_(specialDates, tz) {
   const sheet = getOrCreateSheet_(JOURNAL_SHEET_NAME);
   ensureJournalHeader_(sheet);
   const values = sheet.getDataRange().getValues();
+  const formulas = sheet.getDataRange().getFormulas();
 
   if (!values.length) {
     return [];
@@ -393,6 +408,7 @@ function getEntries_(specialDates, tz) {
     const entryDate = resolveJournalEntryDate_(row[3], timestamp);
     const modified = coerceDate_(row[4]);
     const gpsCoordinate = normalizeGpsCoordinate_(row[5]);
+    const photoUrl = extractPhotoUrlFromCell_(row[6], formulas[item.rowNumber - 1] ? formulas[item.rowNumber - 1][6] : '');
     const labels = entryDate ? getLabelsForDate_(entryDate, specialDates, tz) : [];
     const viewKey = entryDate ? getViewKeyNumber_(entryDate, tz) : null;
     const viewKeyText = entryDate ? getViewKeyText_(entryDate, tz) : '';
@@ -407,6 +423,7 @@ function getEntries_(specialDates, tz) {
       content: content,
       location: location,
       gpsCoordinate: gpsCoordinate,
+      photoUrl: photoUrl,
       modified: modified ? modified.toISOString() : '',
       modifiedDisplay: modified ? formatDisplayDate_(modified, tz) : '',
       labels: labels,
@@ -1033,6 +1050,89 @@ function normalizeGpsCoordinate_(value) {
   return coords.latitude.toFixed(6) + ', ' + coords.longitude.toFixed(6);
 }
 
+function savePhotoAttachment_(photoDataUrl) {
+  const text = String(photoDataUrl || '').trim();
+  if (!text) {
+    return { url: '' };
+  }
+
+  const match = text.match(/^data:([^;]+);base64,(.+)$/);
+  if (!match) {
+    return { url: '' };
+  }
+
+  const mimeType = String(match[1] || '').trim().toLowerCase();
+  if (!/^image\/(png|jpeg|jpg|gif|webp|bmp|heic|heif)$/i.test(mimeType)) {
+    return { url: '' };
+  }
+
+  const base64 = String(match[2] || '').trim();
+  if (!base64) {
+    return { url: '' };
+  }
+
+  const bytes = Utilities.base64Decode(base64);
+  const extension = mimeTypeToExtension_(mimeType);
+  const folder = getOrCreatePhotoFolder_();
+  const stamp = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyyMMdd-HHmmss');
+  const file = folder.createFile(Utilities.newBlob(bytes, mimeType, `Dust-${stamp}.${extension}`));
+  const url = `https://drive.google.com/uc?export=view&id=${file.getId()}`;
+  return {
+    url: url,
+    fileId: file.getId(),
+    name: file.getName(),
+  };
+}
+
+function getOrCreatePhotoFolder_() {
+  const folders = DriveApp.getFoldersByName(PHOTO_FOLDER_NAME);
+  if (folders.hasNext()) {
+    return folders.next();
+  }
+  return DriveApp.createFolder(PHOTO_FOLDER_NAME);
+}
+
+function mimeTypeToExtension_(mimeType) {
+  const type = String(mimeType || '').toLowerCase();
+  if (type === 'image/jpeg' || type === 'image/jpg') return 'jpg';
+  if (type === 'image/png') return 'png';
+  if (type === 'image/gif') return 'gif';
+  if (type === 'image/webp') return 'webp';
+  if (type === 'image/bmp') return 'bmp';
+  if (type === 'image/heic') return 'heic';
+  if (type === 'image/heif') return 'heif';
+  return 'img';
+}
+
+function buildPhotoImageFormula_(url) {
+  const safeUrl = String(url || '').replace(/"/g, '""');
+  if (!safeUrl) {
+    return '';
+  }
+  return `=IMAGE("${safeUrl}")`;
+}
+
+function extractPhotoUrlFromCell_(value, formula) {
+  const formulaText = String(formula || '').trim();
+  if (formulaText) {
+    const match = formulaText.match(/^=IMAGE\("([^"]+)"/i);
+    if (match) {
+      return match[1].replace(/""/g, '"');
+    }
+  }
+
+  const text = String(value || '').trim();
+  if (!text) {
+    return '';
+  }
+
+  if (text.indexOf('http://') === 0 || text.indexOf('https://') === 0) {
+    return text;
+  }
+
+  return '';
+}
+
 function parseGpsCoordinate_(value) {
   if (!value) {
     return null;
@@ -1189,7 +1289,7 @@ function ensureSpecialDatesHeader_(sheet) {
 }
 
 function ensureJournalHeader_(sheet) {
-  const header = ['Timestamp', 'Content', 'Location', 'Date', 'Modified', 'GPSCoordinate'];
+  const header = JOURNAL_HEADER.slice();
   if (sheet.getLastRow() === 0) {
     sheet.getRange(1, 1, 1, header.length).setValues([header]);
     return;
@@ -1203,7 +1303,7 @@ function ensureJournalHeader_(sheet) {
     return;
   }
 
-  if (sheet.getLastColumn() < header.length || String(current[5] || '').trim() !== 'GPSCoordinate') {
+  if (sheet.getLastColumn() < header.length || String(current[5] || '').trim() !== 'GPSCoordinate' || String(current[6] || '').trim() !== 'Photo') {
     sheet.getRange(1, 1, 1, header.length).setValues([header]);
   }
 }

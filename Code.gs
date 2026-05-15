@@ -11,8 +11,8 @@ const SPECIAL_DATE_DISPLAY_MODE_SPECIAL_AND_DEFAULT = 'special-and-default';
 const PHOTO_FOLDER_NAME = 'Dust Photos';
 const JOURNAL_HEADER = ['Timestamp', 'Content', 'Location', 'Date', 'Modified', 'GPSCoordinate', 'Photo'];
 const PHOTO_COLUMN_INDEX = 7;
-const CODE_VERSION = '1.21'; // Version 1.21: Cached parsed journal rows and special dates server-side to reduce initial load work.
-const CODE_CHANGELOG = 'v1.21 | Code.gs | Cached parsed journal rows and special dates server-side to reduce initial load work.';
+const CODE_VERSION = '1.24'; // Version 1.24: Removed the template include dependency after inlining the camera SVG into Index.html.
+const CODE_CHANGELOG = 'v1.24 | Code.gs | Removed the template include dependency after inlining the camera SVG into Index.html.';
 const PARSED_JOURNAL_CACHE_PREFIX = 'parsed-journal';
 const PARSED_SPECIAL_DATES_CACHE_PREFIX = 'parsed-special-dates';
 const PARSED_DATA_CACHE_TTL_SECONDS = 300;
@@ -477,6 +477,7 @@ function getParsedJournalEntriesCacheKey_(tz) {
     PARSED_JOURNAL_CACHE_PREFIX,
     String(tz || Session.getScriptTimeZone()),
     getAppDataCacheVersion_(),
+    getDataCacheBuster_(),
   ].join('|');
 }
 
@@ -678,6 +679,7 @@ function getParsedSpecialDatesCacheKey_(tz) {
     PARSED_SPECIAL_DATES_CACHE_PREFIX,
     String(tz || Session.getScriptTimeZone()),
     getAppDataCacheVersion_(),
+    getDataCacheBuster_(),
   ].join('|');
 }
 
@@ -1311,6 +1313,7 @@ function getAppDataCacheKey_(referenceDate, tz) {
     dateKey_(referenceDate, tz),
     String(tz || Session.getScriptTimeZone()),
     getAppDataCacheVersion_(),
+    getDataCacheBuster_(),
   ].join('|');
 }
 
@@ -1323,6 +1326,18 @@ function invalidateAppDataCache_() {
   const props = PropertiesService.getScriptProperties();
   const current = Number(props.getProperty('APP_DATA_CACHE_VERSION') || '0');
   props.setProperty('APP_DATA_CACHE_VERSION', String(current + 1));
+  bumpDataCacheBuster_(props);
+}
+
+function getDataCacheBuster_() {
+  const props = PropertiesService.getScriptProperties();
+  return String(props.getProperty('DUST_DATA_CACHE_BUSTER') || '0');
+}
+
+function bumpDataCacheBuster_(props) {
+  const service = props || PropertiesService.getScriptProperties();
+  const current = Number(service.getProperty('DUST_DATA_CACHE_BUSTER') || '0');
+  service.setProperty('DUST_DATA_CACHE_BUSTER', String(current + 1));
 }
 
 function getOrCreateSpecialDatesSheet_(seedDefaults) {

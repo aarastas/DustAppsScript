@@ -11,8 +11,11 @@ const SPECIAL_DATE_DISPLAY_MODE_SPECIAL_AND_DEFAULT = 'special-and-default';
 const PHOTO_FOLDER_NAME = 'Dust Photos';
 const JOURNAL_HEADER = ['Timestamp', 'Content', 'Location', 'Date', 'Modified', 'GPSCoordinate', 'Photo'];
 const PHOTO_COLUMN_INDEX = 7;
-const CODE_VERSION = '1.18'; // Version 1.18: Added photo attachments stored in a photo column and Drive-backed image formulas.
-const CODE_CHANGELOG = 'v1.18 | Code.gs | Added photo attachments stored in a photo column and Drive-backed image formulas.';
+const CODE_VERSION = '1.21'; // Version 1.21: Cached parsed journal rows and special dates server-side to reduce initial load work.
+const CODE_CHANGELOG = 'v1.21 | Code.gs | Cached parsed journal rows and special dates server-side to reduce initial load work.';
+const PARSED_JOURNAL_CACHE_PREFIX = 'parsed-journal';
+const PARSED_SPECIAL_DATES_CACHE_PREFIX = 'parsed-special-dates';
+const PARSED_DATA_CACHE_TTL_SECONDS = 300;
 const SPECIAL_DATE_HEADER = ['Type', 'Label', 'RepeatAnnually', 'RuleType', 'RuleValue', 'Enabled'];
 const DEFAULT_SPECIAL_DATE_ROWS = [
   { type: 'Holiday', label: "New Year's Day", ruleType: 'fixed-month-day', ruleValue: '1/1', repeatAnnually: true },
@@ -92,6 +95,7 @@ function getAppData_(referenceDateInput, clientMeta) {
   } catch (error) {
     allEntries = [];
   }
+  base.allEntries = allEntries;
 
   try {
     const view = buildViewContext_(referenceDate, allEntries, specialDates, tz, base.config);
@@ -385,12 +389,39 @@ function buildEntrySnapshot_(rowNumber, timestamp, content, location, entryDate,
 }
 
 function getEntries_(specialDates, tz) {
+  const parsedEntries = getParsedEntries_(tz);
+  if (!parsedEntries.length) {
+    return [];
+  }
+
+  return parsedEntries.map(entry => {
+    const labels = entry.dateKey ? getLabelsForDate_(parseDateInput_(entry.dateKey), specialDates, tz) : [];
+    return Object.assign({}, entry, {
+      labels: labels,
+    });
+  });
+}
+
+function getParsedEntries_(tz) {
+  const cache = CacheService.getScriptCache();
+  const key = getParsedJournalEntriesCacheKey_(tz);
+  const cached = cache.get(key);
+  if (cached) {
+    try {
+      return JSON.parse(cached);
+    } catch (error) {}
+  }
+
   const sheet = getOrCreateSheet_(JOURNAL_SHEET_NAME);
   ensureJournalHeader_(sheet);
   const values = sheet.getDataRange().getValues();
-  const formulas = sheet.getDataRange().getFormulas();
+  const range = sheet.getDataRange();
+  const formulas = range.getFormulas();
 
   if (!values.length) {
+    try {
+      cache.put(key, JSON.stringify([]), PARSED_DATA_CACHE_TTL_SECONDS);
+    } catch (error) {}
     return [];
   }
 
@@ -400,7 +431,7 @@ function getEntries_(specialDates, tz) {
     .slice(startRow)
     .filter(item => item.row.some(cell => cell !== '' && cell !== null));
 
-  return rows.map(item => {
+  const parsed = rows.map(item => {
     const row = item.row;
     const timestamp = coerceDate_(row[0]);
     const content = String(row[1] ?? '').trim();
@@ -409,7 +440,6 @@ function getEntries_(specialDates, tz) {
     const modified = coerceDate_(row[4]);
     const gpsCoordinate = normalizeGpsCoordinate_(row[5]);
     const photoUrl = extractPhotoUrlFromCell_(row[6], formulas[item.rowNumber - 1] ? formulas[item.rowNumber - 1][6] : '');
-    const labels = entryDate ? getLabelsForDate_(entryDate, specialDates, tz) : [];
     const viewKey = entryDate ? getViewKeyNumber_(entryDate, tz) : null;
     const viewKeyText = entryDate ? getViewKeyText_(entryDate, tz) : '';
 
@@ -426,7 +456,7 @@ function getEntries_(specialDates, tz) {
       photoUrl: photoUrl,
       modified: modified ? modified.toISOString() : '',
       modifiedDisplay: modified ? formatDisplayDate_(modified, tz) : '',
-      labels: labels,
+      labels: [],
       viewKey: viewKey,
       viewKeyText: viewKeyText,
     };
@@ -435,6 +465,19 @@ function getEntries_(specialDates, tz) {
     const bDate = b.timestamp || b.dateKey || '';
     return new Date(bDate).getTime() - new Date(aDate).getTime();
   });
+
+  try {
+    cache.put(key, JSON.stringify(parsed), PARSED_DATA_CACHE_TTL_SECONDS);
+  } catch (error) {}
+  return parsed;
+}
+
+function getParsedJournalEntriesCacheKey_(tz) {
+  return [
+    PARSED_JOURNAL_CACHE_PREFIX,
+    String(tz || Session.getScriptTimeZone()),
+    getAppDataCacheVersion_(),
+  ].join('|');
 }
 
 function buildViewContext_(referenceDate, entries, specialDates, tz, config) {
@@ -588,18 +631,31 @@ function resolveJournalEntryDate_(entryDateValue, fallbackTimestamp) {
 }
 
 function getSpecialDates_() {
+  const tz = Session.getScriptTimeZone();
+  const cache = CacheService.getScriptCache();
+  const key = getParsedSpecialDatesCacheKey_(tz);
+  const cached = cache.get(key);
+  if (cached) {
+    try {
+      return JSON.parse(cached);
+    } catch (error) {}
+  }
+
   const sheet = getOrCreateSpecialDatesSheet_(true);
   ensureSpecialDatesHeader_(sheet);
 
   const values = sheet.getDataRange().getValues();
   if (!values.length) {
+    try {
+      cache.put(key, JSON.stringify([]), PARSED_DATA_CACHE_TTL_SECONDS);
+    } catch (error) {}
     return [];
   }
 
   const rows = values.slice(1).filter(row => row.some(cell => cell !== '' && cell !== null));
 
   const seen = {};
-  return rows
+  const parsed = rows
     .map(parseSpecialDateRow_)
     .filter(Boolean)
     .filter(item => {
@@ -610,6 +666,19 @@ function getSpecialDates_() {
       seen[key] = true;
       return true;
     });
+
+  try {
+    cache.put(key, JSON.stringify(parsed), PARSED_DATA_CACHE_TTL_SECONDS);
+  } catch (error) {}
+  return parsed;
+}
+
+function getParsedSpecialDatesCacheKey_(tz) {
+  return [
+    PARSED_SPECIAL_DATES_CACHE_PREFIX,
+    String(tz || Session.getScriptTimeZone()),
+    getAppDataCacheVersion_(),
+  ].join('|');
 }
 
 function getLabelsForDate_(date, specialDates, tz) {

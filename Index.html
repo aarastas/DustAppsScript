@@ -3,7 +3,7 @@
   <head>
     <base target="_top">
     <!-- Version policy: bump the Index.html version comment here and the matching INDEX_VERSION constant in this file whenever this file changes. -->
-    <!-- Version 1.23: Simplified photo handling to camera emoji controls in Today and On this day. -->
+    <!-- Version 1.25: Chunked entry rendering and skipped unnecessary resorting when the sort UI is hidden. -->
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="default">
@@ -444,8 +444,8 @@
         <section class="panel">
           <div class="panel-head">
             <div class="version-stack">
-              <strong>Code.gs <span id="codeVersionLabel">1.18</span></strong>
-              <strong>Index.html <span id="indexVersionLabel">1.23</span></strong>
+              <strong>Code.gs <span id="codeVersionLabel">1.19</span></strong>
+              <strong>Index.html <span id="indexVersionLabel">1.25</span></strong>
             </div>
           </div>
 
@@ -508,6 +508,7 @@
     <script>
       const state = {
         entries: [],
+        allEntries: [],
         specialDates: [],
         user: null,
         today: '',
@@ -515,10 +516,11 @@
         view: null,
         config: null,
         versions: null,
+        renderToken: 0,
       };
 
-      const INDEX_VERSION = '1.23';
-      const INDEX_CHANGELOG = 'v1.23 | Index.html | Simplified photo handling to camera emoji controls in Today and On this day.';
+      const INDEX_VERSION = '1.25';
+      const INDEX_CHANGELOG = 'v1.25 | Index.html | Chunked entry rendering and skipped unnecessary resorting when the sort UI is hidden.';
 
       const els = {
         todayPill: document.getElementById('todayPill'),
@@ -566,6 +568,7 @@
         google.script.run
           .withSuccessHandler(data => {
             state.entries = data.entries || [];
+            state.allEntries = data.allEntries || data.entries || [];
             state.specialDates = data.specialDates || [];
             state.user = data.user || null;
             state.today = data.today || '';
@@ -601,11 +604,6 @@
         if (els.indexVersionLabel) {
           els.indexVersionLabel.textContent = state.versions && state.versions.indexVersion ? state.versions.indexVersion : '';
         }
-        els.viewInfo.textContent = state.view
-          ? (state.view.mode === 'special'
-            ? (state.view.title || '')
-            : (state.view.reason || ''))
-          : '';
       }
 
       function renderSpecialDates() {
@@ -617,6 +615,7 @@
           els.specialDates.appendChild(empty);
           return;
         }
+        const fragment = document.createDocumentFragment();
         state.specialDates.slice().sort((a, b) => {
           return String(a.type || '').localeCompare(String(b.type || '')) ||
             String(a.label || '').localeCompare(String(b.label || '')) ||
@@ -643,8 +642,9 @@
           line.appendChild(date);
           line.appendChild(repeat);
           card.appendChild(line);
-          els.specialDates.appendChild(card);
+          fragment.appendChild(card);
         });
+        els.specialDates.appendChild(fragment);
       }
 
       function describeSpecialDate(item) {
@@ -905,6 +905,306 @@
         return new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric' }).format(date);
       }
 
+      function parsePreviewDate(value) {
+        if (!value) return null;
+        const text = String(value).trim();
+        if (!text) return null;
+        const match = text.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+        if (match) {
+          return new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+        }
+        const parsed = new Date(text);
+        if (!Number.isNaN(parsed.getTime())) {
+          return new Date(parsed.getFullYear(), parsed.getMonth(), parsed.getDate());
+        }
+        return null;
+      }
+
+      function clientDateKey(date) {
+        if (!date) return '';
+        return [
+          date.getFullYear(),
+          String(date.getMonth() + 1).padStart(2, '0'),
+          String(date.getDate()).padStart(2, '0'),
+        ].join('-');
+      }
+
+      function clientMonthDayKey(date) {
+        if (!date) return '';
+        return [
+          String(date.getMonth() + 1).padStart(2, '0'),
+          String(date.getDate()).padStart(2, '0'),
+        ].join('-');
+      }
+
+      function getClientHolidayRuleDate(year, ruleType, ruleValue) {
+        const type = String(ruleType || '').trim().toLowerCase();
+        const value = String(ruleValue || '').trim();
+        if (type === 'fixed-month-day') {
+          const parts = value.split('/').map(part => Number(part.trim()));
+          if (parts.length >= 2 && !parts.some(num => Number.isNaN(num))) {
+            return new Date(year, parts[0] - 1, parts[1]);
+          }
+          const parsed = parsePreviewDate(value);
+          if (parsed) {
+            return new Date(year, parsed.getMonth(), parsed.getDate());
+          }
+          return null;
+        }
+        if (type === 'easter') {
+          return getClientEasterSunday(year);
+        }
+        if (type === 'nth-weekday') {
+          const parts = value.split(',').map(part => Number(part.trim()));
+          if (parts.length !== 3 || parts.some(num => Number.isNaN(num))) {
+            return null;
+          }
+          return getClientNthWeekdayOfMonth(year, parts[2], parts[1], parts[0]);
+        }
+        if (type === 'last-weekday') {
+          const parts = value.split(',').map(part => Number(part.trim()));
+          if (parts.length !== 2 || parts.some(num => Number.isNaN(num))) {
+            return null;
+          }
+          return getClientLastWeekdayOfMonth(year, parts[1], parts[0]);
+        }
+        if (type === 'relative') {
+          const relative = decodeRelativeRuleValue(value);
+          if (!relative) return null;
+          const base = getClientHolidayRuleDate(year, relative.baseType, relative.baseValue);
+          if (!base) return null;
+          const offsetDays = Number(relative.offsetDays || 0);
+          if (Number.isNaN(offsetDays)) return null;
+          const result = new Date(base);
+          result.setDate(result.getDate() + offsetDays);
+          return result;
+        }
+        return null;
+      }
+
+      function getClientEasterSunday(year) {
+        const a = year % 19;
+        const b = Math.floor(year / 100);
+        const c = year % 100;
+        const d = Math.floor(b / 4);
+        const e = b % 4;
+        const f = Math.floor((b + 8) / 25);
+        const g = Math.floor((b - f + 1) / 3);
+        const h = (19 * a + b - d - g + 15) % 30;
+        const i = Math.floor(c / 4);
+        const k = c % 4;
+        const l = (32 + 2 * e + 2 * i - h - k) % 7;
+        const m = Math.floor((a + 11 * h + 22 * l) / 451);
+        const month = Math.floor((h + l - 7 * m + 114) / 31);
+        const day = ((h + l - 7 * m + 114) % 31) + 1;
+        return new Date(year, month - 1, day);
+      }
+
+      function getClientNthWeekdayOfMonth(year, monthIndex, weekday, nth) {
+        const date = new Date(year, monthIndex, 1);
+        while (date.getDay() !== weekday) {
+          date.setDate(date.getDate() + 1);
+        }
+        date.setDate(date.getDate() + (nth - 1) * 7);
+        return date.getMonth() === monthIndex ? date : null;
+      }
+
+      function getClientLastWeekdayOfMonth(year, monthIndex, weekday) {
+        const date = new Date(year, monthIndex + 1, 0);
+        while (date.getDay() !== weekday) {
+          date.setDate(date.getDate() - 1);
+        }
+        return date;
+      }
+
+      function getClientWeekOfYear(date) {
+        const local = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+        const jan1 = new Date(local.getFullYear(), 0, 1);
+        const dayOfYear = Math.floor((local - jan1) / 86400000) + 1;
+        return Math.ceil((dayOfYear + jan1.getDay()) / 7);
+      }
+
+      function getViewKeyNumber(date) {
+        return getClientWeekOfYear(date) + (date.getDay() / 10);
+      }
+
+      function getViewKeyText(date) {
+        return String(getClientWeekOfYear(date)).padStart(2, '0') + '.' + date.getDay();
+      }
+
+      function isClientSpecialDateActiveFor(item, date, dateKey, monthDayKey) {
+        if (!item || item.enabled === false) {
+          return false;
+        }
+
+        if (String(item.type || '').toLowerCase() === 'holiday') {
+          const ruleType = String(item.ruleType || '').toLowerCase();
+          const ruleValue = String(item.ruleValue || '').trim();
+          const target = getClientHolidayRuleDate(date.getFullYear(), ruleType, ruleValue);
+          return target ? clientDateKey(target) === dateKey : false;
+        }
+
+        if (item.repeatAnnually && item.monthDayKey === monthDayKey) {
+          return true;
+        }
+
+        if (item.dateKey === dateKey) {
+          return true;
+        }
+
+        return false;
+      }
+
+      function getClientActiveLabels(date, specialDates) {
+        const labels = [];
+        const dateKey = clientDateKey(date);
+        const monthDayKey = clientMonthDayKey(date);
+        (specialDates || []).forEach(item => {
+          if (isClientSpecialDateActiveFor(item, date, dateKey, monthDayKey)) {
+            labels.push(item.label);
+          }
+        });
+        return [...new Set(labels)];
+      }
+
+      function getClientSpecialDateDisplayMode() {
+        const mode = String(state.config && state.config.specialDateDisplayMode ? state.config.specialDateDisplayMode : '').trim();
+        return mode === 'special-only' ? 'special-only' : 'special-and-default';
+      }
+
+      function getClientDefaultMatches(entries, targetKey, targetKeyText) {
+        const exact = entries.filter(entry => entry.viewKeyText === targetKeyText);
+        if (exact.length) {
+          return exact;
+        }
+
+        let minDiff = null;
+        entries.forEach(entry => {
+          if (typeof entry.viewKey !== 'number') {
+            return;
+          }
+          const diff = Math.abs(entry.viewKey - targetKey);
+          if (minDiff === null || diff < minDiff) {
+            minDiff = diff;
+          }
+        });
+
+        return minDiff === null
+          ? []
+          : entries.filter(entry => typeof entry.viewKey === 'number' && Math.abs(Math.abs(entry.viewKey - targetKey) - minDiff) < 1e-9);
+      }
+
+      function buildClientViewContext(referenceDateInput) {
+        const referenceDate = parsePreviewDate(referenceDateInput) || parsePreviewDate(state.today) || new Date();
+        const entries = Array.isArray(state.allEntries) ? state.allEntries : [];
+        const specialDates = Array.isArray(state.specialDates) ? state.specialDates : [];
+        const activeLabels = getClientActiveLabels(referenceDate, specialDates);
+        const targetKeyNumber = getViewKeyNumber(referenceDate);
+        const targetKeyText = getViewKeyText(referenceDate);
+        const displayMode = getClientSpecialDateDisplayMode();
+
+        if (!entries.length) {
+          return {
+            entries: [],
+            meta: {
+              mode: 'empty',
+              referenceDate: clientDateKey(referenceDate),
+              title: 'No entries',
+              labels: [],
+              targetKey: targetKeyText,
+              reason: 'No journal rows were found.',
+            },
+          };
+        }
+
+        if (activeLabels.length) {
+          const specialMatches = entries
+            .filter(entry => Array.isArray(entry.labels) && entry.labels.some(label => activeLabels.indexOf(label) !== -1))
+            .map(entry => Object.assign({}, entry, { specialMatch: true }));
+
+          if (displayMode === 'special-only') {
+            return {
+              entries: specialMatches,
+              meta: {
+                mode: 'special-only',
+                referenceDate: clientDateKey(referenceDate),
+                title: activeLabels.join(', '),
+                labels: activeLabels,
+                targetKey: targetKeyText,
+                reason: 'Special date label override.',
+              },
+            };
+          }
+
+          const defaultMatches = getClientDefaultMatches(entries, targetKeyNumber, targetKeyText)
+            .map(entry => Object.assign({}, entry, { specialMatch: false }));
+          const merged = [];
+          const seen = {};
+          specialMatches.concat(defaultMatches).forEach(entry => {
+            const key = entry && entry.rowNumber != null ? String(entry.rowNumber) : String(entry.id || '');
+            if (seen[key]) {
+              return;
+            }
+            seen[key] = true;
+            merged.push(entry);
+          });
+
+          return {
+            entries: merged,
+            meta: {
+              mode: 'special',
+              referenceDate: clientDateKey(referenceDate),
+              title: activeLabels.join(', '),
+              labels: activeLabels,
+              targetKey: targetKeyText,
+              reason: 'Special date labels shown first, followed by default matches.',
+            },
+          };
+        }
+
+        const exact = entries.filter(entry => entry.viewKeyText === targetKeyText);
+        if (exact.length) {
+          return {
+            entries: exact,
+            meta: {
+              mode: 'exact',
+              referenceDate: clientDateKey(referenceDate),
+              title: formatDateForDisplay(clientDateKey(referenceDate)),
+              labels: [],
+              targetKey: targetKeyText,
+              reason: 'Exact weekday/week match.',
+            },
+          };
+        }
+
+        let minDiff = null;
+        entries.forEach(entry => {
+          if (typeof entry.viewKey !== 'number') {
+            return;
+          }
+          const diff = Math.abs(entry.viewKey - targetKeyNumber);
+          if (minDiff === null || diff < minDiff) {
+            minDiff = diff;
+          }
+        });
+
+        const fallback = minDiff === null
+          ? []
+          : entries.filter(entry => typeof entry.viewKey === 'number' && Math.abs(Math.abs(entry.viewKey - targetKeyNumber) - minDiff) < 1e-9);
+
+        return {
+          entries: fallback,
+          meta: {
+            mode: 'fallback',
+            referenceDate: clientDateKey(referenceDate),
+            title: formatDateForDisplay(clientDateKey(referenceDate)),
+            labels: [],
+            targetKey: targetKeyText,
+            reason: 'Closest weekday/week match found.',
+          },
+        };
+      }
+
       function describeNthWeekdayRule(ruleValue) {
         const parts = String(ruleValue || '').split(',').map(part => Number(part.trim()));
         if (parts.length !== 3 || parts.some(num => Number.isNaN(num))) return ruleValue;
@@ -932,9 +1232,8 @@
 
       function renderEntries() {
         const query = els.search ? (els.search.value || '').trim().toLowerCase() : '';
-        const mode = els.sortMode ? els.sortMode.value : 'newest';
         const specialContext = Array.isArray(state.view && state.view.labels) && state.view.labels.length > 0;
-        const entries = state.entries
+        let entries = state.entries
           .filter(entry => {
             if (!query) return true;
             return [
@@ -946,8 +1245,11 @@
               (entry.labels || []).join(' '),
             ].join(' ').toLowerCase().includes(query);
           })
-          .slice()
-          .sort((a, b) => {
+          .slice();
+
+        if (els.sortMode) {
+          const mode = els.sortMode.value || 'newest';
+          entries = entries.sort((a, b) => {
             if (specialContext) {
               const aSpecial = a && a.specialMatch ? 1 : 0;
               const bSpecial = b && b.specialMatch ? 1 : 0;
@@ -959,9 +1261,16 @@
             const bTime = safeTime(b);
             return mode === 'oldest' ? aTime - bTime : bTime - aTime;
           });
+        }
 
+        const renderToken = ++state.renderToken;
         els.entries.replaceChildren();
         els.entryCount.textContent = `${entries.length} ${entries.length === 1 ? 'entry' : 'entries'}`;
+        els.viewInfo.textContent = state.view
+          ? (state.view.mode === 'special'
+            ? (state.view.title || '')
+            : (state.view.reason || ''))
+          : '';
         if (!entries.length) {
           const empty = document.createElement('div');
           empty.className = 'entry-card muted';
@@ -969,7 +1278,31 @@
           els.entries.appendChild(empty);
           return;
         }
-        entries.forEach(entry => els.entries.appendChild(buildEntryCard(entry)));
+        renderEntriesChunked(entries, renderToken);
+      }
+
+      function renderEntriesChunked(entries, renderToken) {
+        const batchSize = entries.length > 60 ? 10 : 16;
+        let index = 0;
+
+        const appendBatch = () => {
+          if (renderToken !== state.renderToken) {
+            return;
+          }
+
+          const fragment = document.createDocumentFragment();
+          const end = Math.min(index + batchSize, entries.length);
+          for (; index < end; index += 1) {
+            fragment.appendChild(buildEntryCard(entries[index]));
+          }
+          els.entries.appendChild(fragment);
+
+          if (index < entries.length) {
+            requestAnimationFrame(appendBatch);
+          }
+        };
+
+        requestAnimationFrame(appendBatch);
       }
 
       function buildEntryCard(entry) {
@@ -1145,12 +1478,16 @@
               return;
             }
             if (entry) {
-              upsertVisibleEntry(entry);
+              if (entryMatchesCurrentPreview(entry)) {
+                upsertVisibleEntry(entry, true);
+              } else {
+                upsertVisibleEntry(entry, false);
+              }
             } else if (currentEntry) {
               upsertVisibleEntry(Object.assign({}, currentEntry, {
                 content: contents,
                 location: location,
-              }));
+              }), true);
             }
             setStatus('Entry updated.');
           })
@@ -1184,14 +1521,22 @@
         return String(entry && entry.dateKey ? entry.dateKey : '') === currentPreviewDateKey();
       }
 
-      function upsertVisibleEntry(entry) {
-        const index = state.entries.findIndex(item => Number(item.rowNumber) === Number(entry.rowNumber));
-        if (index >= 0) {
-          state.entries[index] = Object.assign({}, state.entries[index], entry);
-        } else {
-          state.entries.unshift(entry);
+      function upsertVisibleEntry(entry, shouldRender = true) {
+        const updateList = list => {
+          if (!Array.isArray(list)) return list;
+          const index = list.findIndex(item => Number(item.rowNumber) === Number(entry.rowNumber));
+          if (index >= 0) {
+            const next = list.slice();
+            next[index] = Object.assign({}, next[index], entry);
+            return next;
+          }
+          return [entry].concat(list);
+        };
+        state.allEntries = updateList(state.allEntries);
+        if (shouldRender) {
+          state.entries = updateList(state.entries);
+          renderEntries();
         }
-        renderEntries();
       }
 
       function formatDateForDisplay(value) {
@@ -1231,8 +1576,12 @@
               if (els.entryGps) els.entryGps.value = '';
               if (els.entryPhoto) els.entryPhoto.value = '';
               setLoading(els.saveEntryBtn, false, 'Save entry');
-              if (entry && entryMatchesCurrentPreview(entry)) {
-                upsertVisibleEntry(entry);
+              if (entry) {
+                if (entryMatchesCurrentPreview(entry)) {
+                  upsertVisibleEntry(entry, true);
+                } else {
+                  upsertVisibleEntry(entry, false);
+                }
               }
               setStatus('Entry saved.');
             })
@@ -1248,8 +1597,14 @@
       }
 
       function changePreviewDate(dateValue) {
-        setStatus('Updating preview date...');
-        loadAppData(dateValue);
+        const next = parsePreviewDate(dateValue) || parsePreviewDate(state.today) || new Date();
+        const previewKey = clientDateKey(next);
+        state.previewDate = previewKey;
+        const view = buildClientViewContext(previewKey);
+        state.entries = view.entries || [];
+        state.view = view.meta || null;
+        renderEntries();
+        setStatus('');
       }
 
       function changeSpecialDateDisplayMode() {

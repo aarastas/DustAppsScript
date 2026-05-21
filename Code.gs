@@ -11,8 +11,8 @@ const SPECIAL_DATE_DISPLAY_MODE_SPECIAL_AND_DEFAULT = 'special-and-default';
 const PHOTO_FOLDER_NAME = 'Dust Photos';
 const JOURNAL_HEADER = ['Timestamp', 'Content', 'Location', 'Date', 'Modified', 'GPSCoordinate', 'Photo'];
 const PHOTO_COLUMN_INDEX = 7;
-const CODE_VERSION = '1.24'; // Version 1.24: Removed the template include dependency after inlining the camera SVG into Index.html.
-const CODE_CHANGELOG = 'v1.24 | Code.gs | Removed the template include dependency after inlining the camera SVG into Index.html.';
+const CODE_VERSION = '1.25'; // Version 1.25: Made app-data cache keys aware of client index version metadata.
+const CODE_CHANGELOG = 'v1.25 | Code.gs | Made app-data cache keys aware of client index version metadata.';
 const PARSED_JOURNAL_CACHE_PREFIX = 'parsed-journal';
 const PARSED_SPECIAL_DATES_CACHE_PREFIX = 'parsed-special-dates';
 const PARSED_DATA_CACHE_TTL_SECONDS = 300;
@@ -54,7 +54,7 @@ function getAppData_(referenceDateInput, clientMeta) {
   const hasJournalSheet = !!getSheetIfExists_(JOURNAL_SHEET_NAME);
   const hasSpecialDatesSheet = !!getSheetIfExists_(SPECIAL_DATES_SHEET_NAME);
   if (hasJournalSheet && hasSpecialDatesSheet) {
-    const cached = getCachedAppData_(referenceDate, tz);
+    const cached = getCachedAppData_(referenceDate, tz, clientMeta);
     if (cached) {
       return cached;
     }
@@ -103,7 +103,7 @@ function getAppData_(referenceDateInput, clientMeta) {
     base.specialDates = specialDates;
     base.view = view.meta;
     if (hasJournalSheet && hasSpecialDatesSheet) {
-      setCachedAppData_(referenceDate, tz, base);
+      setCachedAppData_(referenceDate, tz, clientMeta, base);
     }
     return base;
   } catch (error) {
@@ -118,7 +118,7 @@ function getAppData_(referenceDateInput, clientMeta) {
       reason: error && error.message ? error.message : 'Failed to build view.',
     };
     if (hasJournalSheet && hasSpecialDatesSheet) {
-      setCachedAppData_(referenceDate, tz, base);
+      setCachedAppData_(referenceDate, tz, clientMeta, base);
     }
     return base;
   }
@@ -1284,9 +1284,9 @@ function getOrCreateSheet_(name) {
   return ss.getSheetByName(name) || ss.insertSheet(name);
 }
 
-function getCachedAppData_(referenceDate, tz) {
+function getCachedAppData_(referenceDate, tz, clientMeta) {
   const cache = CacheService.getUserCache();
-  const key = getAppDataCacheKey_(referenceDate, tz);
+  const key = getAppDataCacheKey_(referenceDate, tz, clientMeta);
   const cached = cache.get(key);
   if (!cached) {
     return null;
@@ -1299,21 +1299,25 @@ function getCachedAppData_(referenceDate, tz) {
   }
 }
 
-function setCachedAppData_(referenceDate, tz, data) {
+function setCachedAppData_(referenceDate, tz, clientMeta, data) {
   const cache = CacheService.getUserCache();
-  const key = getAppDataCacheKey_(referenceDate, tz);
+  const key = getAppDataCacheKey_(referenceDate, tz, clientMeta);
   try {
     cache.put(key, JSON.stringify(data), 300);
   } catch (error) {}
 }
 
-function getAppDataCacheKey_(referenceDate, tz) {
+function getAppDataCacheKey_(referenceDate, tz, clientMeta) {
+  const indexVersion = String(clientMeta && clientMeta.indexVersion ? clientMeta.indexVersion : '').trim();
+  const indexChangelog = String(clientMeta && clientMeta.indexChangelog ? clientMeta.indexChangelog : '').trim();
   return [
     'app-data',
     dateKey_(referenceDate, tz),
     String(tz || Session.getScriptTimeZone()),
     getAppDataCacheVersion_(),
     getDataCacheBuster_(),
+    indexVersion,
+    indexChangelog,
   ].join('|');
 }
 

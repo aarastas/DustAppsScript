@@ -3,7 +3,7 @@
   <head>
     <base target="_top">
     <!-- Version policy: bump the Index.html version comment here and the matching INDEX_VERSION constant in this file whenever this file changes. -->
-    <!-- Version 1.43: Matched the camera control height to the Save entry button height. -->
+    <!-- Version 1.46: Rebuilt the page around semantic HTML5 sections, footer, and panel structure. -->
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="default">
@@ -39,14 +39,14 @@
           linear-gradient(180deg, #f7f2ea 0%, #f3efe7 100%);
       }
 
-      .app { width: min(100%, 1040px); margin: 0 auto; padding: 16px 16px 28px; }
-      .hero, .panel {
+      .dust-app, .app { width: min(100%, 1080px); margin: 0 auto; padding: 16px 16px 28px; }
+      .dust-hero, .hero, .dust-panel, .panel {
         background: var(--panel);
         border: 1px solid var(--border);
         box-shadow: var(--shadow);
         backdrop-filter: blur(10px);
       }
-      .hero { display: grid; gap: 14px; padding: 20px; border-radius: 24px; }
+      .dust-hero, .hero { display: grid; gap: 14px; padding: 20px; border-radius: 24px; }
       .hero-left { display: grid; gap: 8px; align-content: start; }
       .title-row {
         display: flex;
@@ -103,8 +103,22 @@
         display: inline-flex; align-items: center; min-height: 40px; padding: 8px 12px;
         border-radius: 999px; background: rgba(141, 90, 43, 0.10); color: var(--accent-strong); font-size: 0.95rem;
       }
-      .grid { display: grid; gap: 16px; margin-top: 16px; }
-      .panel { padding: 18px; border-radius: 22px; }
+      .dust-layout, .grid { display: grid; gap: 16px; margin-top: 16px; }
+      .dust-panel, .panel { padding: 18px; border-radius: 22px; }
+      .dust-footer {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        margin-top: 16px;
+        padding: 14px 4px 0;
+        color: var(--muted);
+        font-size: 0.9rem;
+      }
+      .dust-footer time {
+        color: var(--accent-strong);
+      }
       .panel-head {
         display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 14px;
       }
@@ -115,6 +129,16 @@
       }
       label { display: block; margin-bottom: 6px; font-size: 0.95rem; color: var(--muted); }
       input, textarea, select, button { font: inherit; }
+      fieldset {
+        margin: 0;
+        padding: 0;
+        border: 0;
+        min-inline-size: 0;
+      }
+      legend {
+        padding: 0;
+        font: inherit;
+      }
       input, textarea, select {
         width: 100%; border-radius: 14px; border: 1px solid rgba(74, 57, 36, 0.18);
         background: rgba(255, 255, 255, 0.92); color: var(--text); padding: 10px 14px; outline: none;
@@ -177,10 +201,24 @@
         background: var(--accent); color: white; cursor: pointer; box-shadow: 0 10px 24px rgba(141, 90, 43, 0.18);
       }
       button.secondary { background: rgba(141, 90, 43, 0.12); color: var(--accent-strong); box-shadow: none; }
-      button:disabled { opacity: 0.65; cursor: wait; }
+      button:disabled {
+        opacity: 1;
+        cursor: wait;
+        background: #d6cec3;
+        color: #8f8272;
+        box-shadow: none;
+      }
+      .entry-form-actions button:disabled,
+      .entry-save button:disabled {
+        background: #d6cec3;
+        color: #8f8272;
+      }
       details {
         margin-top: 8px; border-radius: 18px; border: 1px solid rgba(74, 57, 36, 0.12);
         background: rgba(255, 255, 255, 0.50); padding: 10px 12px;
+      }
+      .dust-panel details {
+        margin-top: 0;
       }
       summary { cursor: pointer; color: var(--accent-strong); font-weight: 600; list-style: none; }
       summary::-webkit-details-marker { display: none; }
@@ -421,189 +459,207 @@
         border: 0;
       }
       @media (min-width: 760px) {
-        .hero { grid-template-columns: 1fr auto; align-items: end; }
+        .dust-hero, .hero { grid-template-columns: 1fr auto; align-items: end; }
         .hero-left { min-width: min(56ch, 100%); }
         .composer-grid {
-          grid-template-columns: 220px 220px 1fr;
-          grid-template-areas:
-            "date location content"
-            "save save save";
+          grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
           align-items: start;
         }
-        .entry-date-field { grid-area: date; align-self: start; }
-        .entry-location-field { grid-area: location; align-self: start; }
-        .entry-content-field { grid-area: content; align-self: start; }
-        .entry-save { grid-area: save; align-self: start; }
+        .entry-date-field,
+        .entry-location-field,
+        .entry-content-field,
+        .entry-save {
+          min-width: 0;
+        }
+        .entry-content-field,
+        .entry-save {
+          grid-column: 1 / -1;
+        }
         .filter-row { grid-template-columns: 1fr 220px; align-items: end; }
-        .view-row { grid-template-columns: 220px 1fr auto; align-items: end; }
-        .entry-form-grid { grid-template-columns: 220px 220px 1fr; }
+        .view-row { grid-template-columns: minmax(180px, 220px) 1fr auto; align-items: end; }
+        .entry-form-grid { grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
         .entry-form-actions { justify-content: flex-start; }
-        .special-grid { grid-template-columns: 220px 220px 1fr; }
+        .special-grid { grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
+      }
+      @media (min-width: 1120px) {
+        .dust-layout {
+          grid-template-columns: minmax(0, 1.35fr) minmax(320px, 0.95fr);
+          align-items: start;
+        }
+        .dust-panel--feed {
+          grid-column: 1 / 2;
+        }
+        .dust-panel--composer {
+          grid-column: 2 / 3;
+        }
+        .dust-panel--settings {
+          grid-column: 1 / -1;
+        }
       }
       @media (max-width: 759px) {
         html { font-size: 18px; }
-        .app { padding: 12px 12px 20px; }
+        .dust-app, .app { padding: 12px 12px 20px; }
       }
     </style>
   </head>
   <body>
-    <div class="app">
-      <header class="hero">
+    <main class="dust-app">
+      <header class="dust-hero" aria-labelledby="dustTitle">
         <div class="hero-left">
           <div class="eyebrow-row">
             <p class="eyebrow">Journal</p>
             <span class="header-user" id="userPill">Loading user...</span>
           </div>
           <div class="title-row">
-            <h1>Dust</h1>
+            <h1 id="dustTitle">Dust</h1>
             <div class="title-side">
-              <span class="header-date" id="todayPill">Loading date...</span>
+              <time class="header-date" id="todayPill" datetime="">Loading date...</time>
               <span class="quote">I am large, I contain multitudes.</span>
             </div>
           </div>
         </div>
       </header>
 
-      <div class="grid">
-        <section class="panel">
+      <section class="dust-layout" aria-label="Journal workspace">
+        <section class="dust-panel dust-panel--feed" aria-labelledby="onThisDayTitle">
           <details id="onThisDayDetails" open>
             <summary class="panel-head">
-              <h2>On this day</h2>
+              <h2 id="onThisDayTitle">On this day</h2>
               <span id="entryCount">Loading...</span>
             </summary>
 
             <div class="toolbar">
               <div class="view-row">
                 <div>
+                  <label class="visually-hidden" for="previewDate">Preview date</label>
                   <input type="date" id="previewDate" aria-label="Preview date">
                 </div>
                 <div class="view-info" id="viewInfo" aria-live="polite"></div>
-            </div>
-            <!-- Search and sort retained in JS for future use.
-            <div class="filter-row">
-              <div>
-                <label for="search">Search</label>
-                <input type="search" id="search" placeholder="Filter by text, location, or label">
               </div>
-              <div>
-                <label for="sortMode">Sort</label>
-                <select id="sortMode">
-                  <option value="newest">Newest first</option>
-                  <option value="oldest">Oldest first</option>
-                </select>
+              <!-- Search and sort retained in JS for future use.
+              <div class="filter-row">
+                <div>
+                  <label for="search">Search</label>
+                  <input type="search" id="search" placeholder="Filter by text, location, or label">
+                </div>
+                <div>
+                  <label for="sortMode">Sort</label>
+                  <select id="sortMode">
+                    <option value="newest">Newest first</option>
+                    <option value="oldest">Oldest first</option>
+                  </select>
+                </div>
               </div>
-            </div>
-            -->
-              <div class="status" id="status"></div>
+              -->
+              <div class="status" id="status" role="status" aria-live="polite"></div>
             </div>
 
             <div id="entries" class="entry-list"></div>
           </details>
         </section>
 
-        <section class="panel">
+        <section class="dust-panel dust-panel--composer" aria-labelledby="todayTitle">
           <div class="panel-head">
-            <h2>Today</h2>
+            <h2 id="todayTitle">Today</h2>
             <span>Saved to Dust</span>
           </div>
 
           <form id="entryForm">
-            <div class="composer-grid">
-              <div class="entry-date-field">
-                <label for="entryDate">Entry date</label>
-                <input type="date" id="entryDate" name="entryDate">
-              </div>
-              <div class="entry-location-field">
-                <label for="entryLocation">Location</label>
-                <input type="text" id="entryLocation" name="entryLocation" placeholder="City, ST">
-                <input type="hidden" id="entryGps" name="entryGps">
-                <div id="locationHint" class="locating-note hidden">Locating...</div>
-              </div>
-              <div class="entry-content-field">
-                <div class="content-label-row">
-                  <label for="contents">Entry text</label>
+            <fieldset>
+              <legend class="visually-hidden">Create a new journal entry</legend>
+              <div class="composer-grid">
+                <div class="entry-date-field">
+                  <label for="entryDate">Entry date</label>
+                  <input type="date" id="entryDate" name="entryDate">
                 </div>
-                <textarea id="contents" name="contents" placeholder="Do I contradict myself?"></textarea>
+                <div class="entry-location-field">
+                  <label for="entryLocation">Location</label>
+                  <input type="text" id="entryLocation" name="entryLocation" placeholder="City, ST">
+                  <input type="hidden" id="entryGps" name="entryGps">
+                  <div id="locationHint" class="locating-note hidden">Locating...</div>
+                </div>
+                <div class="entry-content-field">
+                  <div class="content-label-row">
+                    <label for="contents">Entry text</label>
+                  </div>
+                  <textarea id="contents" name="contents" placeholder="Do I contradict myself?"></textarea>
+                </div>
+                <div class="entry-save" style="display:flex; flex-direction:row; align-items:center; justify-content:flex-start; gap:10px; width:100%; flex-wrap:nowrap;">
+                  <button type="submit" id="saveEntryBtn" style="flex:1 1 0; min-width:0; height:44px; min-height:44px; padding:0 16px; line-height:1;">Save entry</button>
+                  <button type="button" id="entryPhotoBtn" class="photo-trigger" aria-label="Add photo" title="Add photo" style="flex:0 0 44px; width:44px; min-width:44px; height:44px; min-height:44px; padding:0;"><svg
+     viewBox="0 0 136.64312 115.30201"
+     version="1.1"
+     id="svg1"
+     xml:space="preserve"
+     inkscape:version="1.3.2 (091e20e, 2023-11-25, custom)"
+     sodipodi:docname="camera.svg"
+     xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+     xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+     xmlns="http://www.w3.org/2000/svg"
+     xmlns:svg="http://www.w3.org/2000/svg"><sodipodi:namedview
+       id="namedview1"
+       pagecolor="#ffffff"
+       bordercolor="#666666"
+       borderopacity="1.0"
+       inkscape:showpageshadow="2"
+       inkscape:pageopacity="0.0"
+       inkscape:pagecheckerboard="0"
+       inkscape:deskcolor="#d1d1d1"
+       inkscape:document-units="mm"
+       inkscape:zoom="0.36213174"
+       inkscape:cx="-258.19333"
+       inkscape:cy="100.79205"
+       inkscape:window-width="1920"
+       inkscape:window-height="1009"
+       inkscape:window-x="1912"
+       inkscape:window-y="-8"
+       inkscape:window-maximized="1"
+       inkscape:current-layer="g6" /><defs
+       id="defs1" /><g
+       inkscape:label="Layer 1"
+       inkscape:groupmode="layer"
+       id="layer1"
+       transform="translate(-20.664135,-86.285739)"><g
+         id="g6"
+           transform="translate(25.206642,-11.690037)"><circle
+           style="fill:#b5c9ca;fill-opacity:1;stroke-width:0.0499999;paint-order:stroke fill markers"
+           id="path7"
+           cx="63.648438"
+           cy="162.15915"
+           r="26.393911" /><circle
+           style="fill:#ff4300;fill-opacity:1;stroke-width:0.0569084;paint-order:stroke fill markers"
+           id="path6"
+           cx="72.786255"
+           cy="158.13336"
+           r="4.5217071" /><path
+           id="path4"
+           style="fill:#ae8b65;fill-opacity:1;stroke-width:0.627466"
+           d="m 80.786679,162.61475 c -0.152539,-10e-4 -0.324556,0.009 -0.531645,0.0286 -1.155111,0.10725 -2.085969,0.65816 -3.676178,2.1761 -1.364096,1.30212 -4.556149,5.39224 -6.314082,8.09041 -1.152807,1.76939 -4.311371,7.31348 -4.714972,7.92153 -0.323901,0.48798 2.357183,0.23325 12.007387,0.22517 1.622925,-10e-4 2.628101,-0.005 3.852351,-0.008 3.162326,-3.0455 5.499391,-6.84425 6.792041,-11.04001 -2.329711,-3.61257 -4.339726,-5.90059 -6.135823,-6.95987 -0.537702,-0.31713 -0.821459,-0.4296 -1.279079,-0.43366 z"
+           sodipodi:nodetypes="ssssscccsss" /><path
+           id="rect6"
+           style="fill:#2b8a8d;fill-opacity:1;stroke-width:0.0499999;paint-order:stroke fill markers"
+           d="m 45.885301,181.03517 a 25.702417,25.702417 0 0 0 17.738969,7.22384 25.702417,25.702417 0 0 0 17.732768,-7.22384 z" /><path
+           id="path3"
+           style="fill:#876743;fill-opacity:1;stroke-width:0.6221"
+           d="m 55.753433,144.74487 c -3.215877,0 -8.140214,6.88322 -14.707113,20.55637 -0.502122,1.04548 -1.281025,2.74655 -2.078943,4.50825 1.287828,4.30626 3.682402,8.19952 6.944796,11.29131 3.810249,0.0382 9.258626,-0.0294 18.895275,-0.0468 l 1.012859,-0.0109 1.541715,-3.13738 c 0.957917,-1.64402 2.368153,-3.95191 3.133658,-5.12837 l 1.391647,-2.13889 -1.137915,-2.81171 C 65.624996,155.1689 60.623753,146.7552 57.240159,145.09895 56.84248,144.9043 56.173566,144.74496 55.753428,144.74496 Z"
+           sodipodi:nodetypes="ssccccccccsss" /><path
+           style="fill:#000000"
+           d="m 6.4492386,213.19267 c -3.34901,-0.5109 -6.48567001,-2.38688 -8.47288,-5.06749 -0.84883,-1.145 -1.77335,-3.08664 -2.16573,-4.54835 l -0.303,-1.12877 -0.0402,-33.30336 c -0.0283,-23.41825 0.003,-33.64012 0.10491,-34.43794 0.63664,-4.97799 4.48445999,-9.34971 9.34186,-10.61381 0.4772,-0.12418 5.1022904,-0.93166 10.2779904,-1.79439 9.07755,-1.51313 9.41586,-1.57991 9.56564,-1.88825 0.0854,-0.17581 1.48793,-3.65332 3.11673,-7.72781 1.7386,-4.34916 3.21777,-7.84885 3.58218,-8.4754 0.8379,-1.44066 2.78389,-3.40316 4.27572,-4.31201 1.381769,-0.841801 2.990113,-1.435051 4.597211,-1.695701 1.838327,-0.29815 45.060426,-0.29815 46.898753,0 1.607098,0.26065 3.215442,0.8539 4.59721,1.695701 1.491833,0.90885 3.437822,2.87135 4.275722,4.31201 0.36441,0.62655 1.843574,4.12624 3.582178,8.4754 1.628807,4.07449 3.031337,7.552 3.116737,7.72781 0.14978,0.30834 0.48809,0.37512 9.56564,1.88825 5.1757,0.86273 9.8008,1.67021 10.27799,1.79439 3.99707,1.0402 7.41125,4.22915 8.75358,8.17613 0.24375,0.71671 0.50847,1.81366 0.58828,2.43768 0.10203,0.79782 0.13317,11.01969 0.10491,34.43794 l -0.0402,33.30336 -0.30099,1.12037 c -0.76598,2.85114 -2.46274,5.42173 -4.70074,7.12163 -1.13017,0.85843 -3.24413,1.88313 -4.67181,2.26456 l -1.13459,0.30312 -57.062862,0.0184 c -31.384569,0.0101 -57.3631894,-0.0274 -57.7302594,-0.0834 z M 121.1054,204.39052 c 0.84604,-0.41633 1.65383,-1.22425 2.07561,-2.07594 l 0.33052,-0.6674 V 168.4773 135.30742 l -0.33052,-0.6674 c -0.42098,-0.85007 -1.22924,-1.65918 -2.03602,-2.03816 -0.47705,-0.22409 -3.51019,-0.77445 -12.41368,-2.25248 -6.48031,-1.07576 -11.85062,-2.02207 -11.934027,-2.10291 -0.08341,-0.0808 -1.873398,-4.46532 -3.977756,-9.74328 -2.104359,-5.27797 -4.004993,-9.8563 -4.223632,-10.17408 -0.469975,-0.68309 -1.277777,-1.26933 -2.163207,-1.5699 -0.579264,-0.19663 -2.687248,-0.21681 -22.653629,-0.21681 -19.96638,0 -22.074364,0.0202 -22.653628,0.21681 -0.884232,0.30016 -1.693079,0.88659 -2.161098,1.56683 -0.217478,0.31609 -2.119691,4.89443 -4.227144,10.17408 -2.10744,5.27965 -3.89838,9.66551 -3.97986,9.74635 -0.0815,0.0808 -5.45021,1.02715 -11.93052,2.10291 -8.9034804,1.47803 -11.9366204,2.02839 -12.4136704,2.25248 -0.80753,0.37933 -1.62393,1.19645 -2.03984,2.04164 l -0.32671,0.66392 -0.0375,32.83618 c -0.0266,23.28654 0.005,33.01086 0.10744,33.43684 0.31402,1.30118 1.54835,2.6055 2.85281,3.01455 0.44349,0.13906 11.2970304,0.16705 57.0099664,0.147 l 56.462195,-0.0248 z M 60.57553,196.0963 c -6.278173,-0.60061 -12.253346,-2.93407 -17.446887,-6.81345 -1.670877,-1.24809 -5.303392,-4.87689 -6.541581,-6.53489 -3.516533,-4.70885 -5.702093,-9.89638 -6.602873,-15.6722 -0.23832,-1.52811 -0.29144,-2.44048 -0.29144,-5.00552 0,-2.56503 0.0531,-3.47741 0.29144,-5.00551 0.90333,-5.7922 3.09894,-11.0059 6.59191,-15.65318 1.241954,-1.65237 4.076155,-4.57412 5.71978,-5.89645 9.272407,-7.45986 21.508335,-9.5736 32.845232,-5.67398 0.761928,0.26208 2.346383,0.9484 3.52101,1.52515 3.878802,1.90451 6.114246,3.50751 9.213821,6.60709 3.054415,3.05441 4.807161,5.48754 6.605094,9.16905 1.582918,3.24124 2.635296,6.68844 3.15139,10.32276 0.340649,2.39885 0.340649,6.81129 0,9.21015 -0.831148,5.85293 -3.110684,11.3479 -6.665044,16.06652 -1.274864,1.69246 -3.823558,4.31946 -5.602893,5.77503 -6.13619,5.01967 -13.927659,7.77521 -21.78565,7.70473 -1.027799,-0.009 -2.379288,-0.0656 -3.003309,-0.1253 z m 7.675122,-8.79085 c 8.276952,-1.55447 14.9946,-6.66952 18.617167,-14.17577 4.363408,-9.04132 2.995687,-19.82349 -3.493997,-27.54427 -5.444524,-6.47734 -13.755471,-9.85538 -22.150117,-9.00305 -6.649158,0.6751 -12.75673,3.89809 -17.026071,8.98472 -8.041482,9.58087 -8.048648,23.39702 -0.01711,32.98799 4.198442,5.01362 10.134235,8.19651 16.795449,9.00605 1.640808,0.19941 5.590747,0.0606 7.274679,-0.25567 z"
+           id="path1"
+           sodipodi:nodetypes="cssccccsssssssssssscssscsssccccsscccssscsssscscccsscscsccsssssscscsssssssscscssssssc" /></g></g></svg></button>
+                  <input type="file" id="entryPhoto" name="entryPhoto" accept="image/*" class="visually-hidden">
+                </div>
               </div>
-              <div class="entry-save" style="display:flex; flex-direction:row; align-items:center; justify-content:flex-start; gap:10px; width:100%; flex-wrap:nowrap;">
-                <button type="submit" id="saveEntryBtn" style="flex:1 1 0; min-width:0; height:44px; min-height:44px; padding:0 16px; line-height:1;">Save entry</button>
-                <button type="button" id="entryPhotoBtn" class="photo-trigger" aria-label="Add photo" title="Add photo" style="flex:0 0 44px; width:44px; min-width:44px; height:44px; min-height:44px; padding:0;"><svg
-   viewBox="0 0 136.64312 115.30201"
-   version="1.1"
-   id="svg1"
-   xml:space="preserve"
-   inkscape:version="1.3.2 (091e20e, 2023-11-25, custom)"
-   sodipodi:docname="camera.svg"
-   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
-   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
-   xmlns="http://www.w3.org/2000/svg"
-   xmlns:svg="http://www.w3.org/2000/svg"><sodipodi:namedview
-     id="namedview1"
-     pagecolor="#ffffff"
-     bordercolor="#666666"
-     borderopacity="1.0"
-     inkscape:showpageshadow="2"
-     inkscape:pageopacity="0.0"
-     inkscape:pagecheckerboard="0"
-     inkscape:deskcolor="#d1d1d1"
-     inkscape:document-units="mm"
-     inkscape:zoom="0.36213174"
-     inkscape:cx="-258.19333"
-     inkscape:cy="100.79205"
-     inkscape:window-width="1920"
-     inkscape:window-height="1009"
-     inkscape:window-x="1912"
-     inkscape:window-y="-8"
-     inkscape:window-maximized="1"
-     inkscape:current-layer="g6" /><defs
-     id="defs1" /><g
-     inkscape:label="Layer 1"
-     inkscape:groupmode="layer"
-     id="layer1"
-     transform="translate(-20.664135,-86.285739)"><g
-       id="g6"
-         transform="translate(25.206642,-11.690037)"><circle
-         style="fill:#b5c9ca;fill-opacity:1;stroke-width:0.0499999;paint-order:stroke fill markers"
-         id="path7"
-         cx="63.648438"
-         cy="162.15915"
-         r="26.393911" /><circle
-         style="fill:#ff4300;fill-opacity:1;stroke-width:0.0569084;paint-order:stroke fill markers"
-         id="path6"
-         cx="72.786255"
-         cy="158.13336"
-         r="4.5217071" /><path
-         id="path4"
-         style="fill:#ae8b65;fill-opacity:1;stroke-width:0.627466"
-         d="m 80.786679,162.61475 c -0.152539,-10e-4 -0.324556,0.009 -0.531645,0.0286 -1.155111,0.10725 -2.085969,0.65816 -3.676178,2.1761 -1.364096,1.30212 -4.556149,5.39224 -6.314082,8.09041 -1.152807,1.76939 -4.311371,7.31348 -4.714972,7.92153 -0.323901,0.48798 2.357183,0.23325 12.007387,0.22517 1.622925,-10e-4 2.628101,-0.005 3.852351,-0.008 3.162326,-3.0455 5.499391,-6.84425 6.792041,-11.04001 -2.329711,-3.61257 -4.339726,-5.90059 -6.135823,-6.95987 -0.537702,-0.31713 -0.821459,-0.4296 -1.279079,-0.43366 z"
-         sodipodi:nodetypes="ssssscccsss" /><path
-         id="rect6"
-         style="fill:#2b8a8d;fill-opacity:1;stroke-width:0.0499999;paint-order:stroke fill markers"
-         d="m 45.885301,181.03517 a 25.702417,25.702417 0 0 0 17.738969,7.22384 25.702417,25.702417 0 0 0 17.732768,-7.22384 z" /><path
-         id="path3"
-         style="fill:#876743;fill-opacity:1;stroke-width:0.6221"
-         d="m 55.753433,144.74487 c -3.215877,0 -8.140214,6.88322 -14.707113,20.55637 -0.502122,1.04548 -1.281025,2.74655 -2.078943,4.50825 1.287828,4.30626 3.682402,8.19952 6.944796,11.29131 3.810249,0.0382 9.258626,-0.0294 18.895275,-0.0468 l 1.012859,-0.0109 1.541715,-3.13738 c 0.957917,-1.64402 2.368153,-3.95191 3.133658,-5.12837 l 1.391647,-2.13889 -1.137915,-2.81171 C 65.624996,155.1689 60.623753,146.7552 57.240159,145.09895 56.84248,144.9043 56.173566,144.74496 55.753428,144.74496 Z"
-         sodipodi:nodetypes="ssccccccccsss" /><path
-         style="fill:#000000"
-         d="m 6.4492386,213.19267 c -3.34901,-0.5109 -6.48567001,-2.38688 -8.47288,-5.06749 -0.84883,-1.145 -1.77335,-3.08664 -2.16573,-4.54835 l -0.303,-1.12877 -0.0402,-33.30336 c -0.0283,-23.41825 0.003,-33.64012 0.10491,-34.43794 0.63664,-4.97799 4.48445999,-9.34971 9.34186,-10.61381 0.4772,-0.12418 5.1022904,-0.93166 10.2779904,-1.79439 9.07755,-1.51313 9.41586,-1.57991 9.56564,-1.88825 0.0854,-0.17581 1.48793,-3.65332 3.11673,-7.72781 1.7386,-4.34916 3.21777,-7.84885 3.58218,-8.4754 0.8379,-1.44066 2.78389,-3.40316 4.27572,-4.31201 1.381769,-0.841801 2.990113,-1.435051 4.597211,-1.695701 1.838327,-0.29815 45.060426,-0.29815 46.898753,0 1.607098,0.26065 3.215442,0.8539 4.59721,1.695701 1.491833,0.90885 3.437822,2.87135 4.275722,4.31201 0.36441,0.62655 1.843574,4.12624 3.582178,8.4754 1.628807,4.07449 3.031337,7.552 3.116737,7.72781 0.14978,0.30834 0.48809,0.37512 9.56564,1.88825 5.1757,0.86273 9.8008,1.67021 10.27799,1.79439 3.99707,1.0402 7.41125,4.22915 8.75358,8.17613 0.24375,0.71671 0.50847,1.81366 0.58828,2.43768 0.10203,0.79782 0.13317,11.01969 0.10491,34.43794 l -0.0402,33.30336 -0.30099,1.12037 c -0.76598,2.85114 -2.46274,5.42173 -4.70074,7.12163 -1.13017,0.85843 -3.24413,1.88313 -4.67181,2.26456 l -1.13459,0.30312 -57.062862,0.0184 c -31.384569,0.0101 -57.3631894,-0.0274 -57.7302594,-0.0834 z M 121.1054,204.39052 c 0.84604,-0.41633 1.65383,-1.22425 2.07561,-2.07594 l 0.33052,-0.6674 V 168.4773 135.30742 l -0.33052,-0.6674 c -0.42098,-0.85007 -1.22924,-1.65918 -2.03602,-2.03816 -0.47705,-0.22409 -3.51019,-0.77445 -12.41368,-2.25248 -6.48031,-1.07576 -11.85062,-2.02207 -11.934027,-2.10291 -0.08341,-0.0808 -1.873398,-4.46532 -3.977756,-9.74328 -2.104359,-5.27797 -4.004993,-9.8563 -4.223632,-10.17408 -0.469975,-0.68309 -1.277777,-1.26933 -2.163207,-1.5699 -0.579264,-0.19663 -2.687248,-0.21681 -22.653629,-0.21681 -19.96638,0 -22.074364,0.0202 -22.653628,0.21681 -0.884232,0.30016 -1.693079,0.88659 -2.161098,1.56683 -0.217478,0.31609 -2.119691,4.89443 -4.227144,10.17408 -2.10744,5.27965 -3.89838,9.66551 -3.97986,9.74635 -0.0815,0.0808 -5.45021,1.02715 -11.93052,2.10291 -8.9034804,1.47803 -11.9366204,2.02839 -12.4136704,2.25248 -0.80753,0.37933 -1.62393,1.19645 -2.03984,2.04164 l -0.32671,0.66392 -0.0375,32.83618 c -0.0266,23.28654 0.005,33.01086 0.10744,33.43684 0.31402,1.30118 1.54835,2.6055 2.85281,3.01455 0.44349,0.13906 11.2970304,0.16705 57.0099664,0.147 l 56.462195,-0.0248 z M 60.57553,196.0963 c -6.278173,-0.60061 -12.253346,-2.93407 -17.446887,-6.81345 -1.670877,-1.24809 -5.303392,-4.87689 -6.541581,-6.53489 -3.516533,-4.70885 -5.702093,-9.89638 -6.602873,-15.6722 -0.23832,-1.52811 -0.29144,-2.44048 -0.29144,-5.00552 0,-2.56503 0.0531,-3.47741 0.29144,-5.00551 0.90333,-5.7922 3.09894,-11.0059 6.59191,-15.65318 1.241954,-1.65237 4.076155,-4.57412 5.71978,-5.89645 9.272407,-7.45986 21.508335,-9.5736 32.845232,-5.67398 0.761928,0.26208 2.346383,0.9484 3.52101,1.52515 3.878802,1.90451 6.114246,3.50751 9.213821,6.60709 3.054415,3.05441 4.807161,5.48754 6.605094,9.16905 1.582918,3.24124 2.635296,6.68844 3.15139,10.32276 0.340649,2.39885 0.340649,6.81129 0,9.21015 -0.831148,5.85293 -3.110684,11.3479 -6.665044,16.06652 -1.274864,1.69246 -3.823558,4.31946 -5.602893,5.77503 -6.13619,5.01967 -13.927659,7.77521 -21.78565,7.70473 -1.027799,-0.009 -2.379288,-0.0656 -3.003309,-0.1253 z m 7.675122,-8.79085 c 8.276952,-1.55447 14.9946,-6.66952 18.617167,-14.17577 4.363408,-9.04132 2.995687,-19.82349 -3.493997,-27.54427 -5.444524,-6.47734 -13.755471,-9.85538 -22.150117,-9.00305 -6.649158,0.6751 -12.75673,3.89809 -17.026071,8.98472 -8.041482,9.58087 -8.048648,23.39702 -0.01711,32.98799 4.198442,5.01362 10.134235,8.19651 16.795449,9.00605 1.640808,0.19941 5.590747,0.0606 7.274679,-0.25567 z"
-         id="path1"
-         sodipodi:nodetypes="cssccccsssssssssssscssscsssccccsscccssscsssscscccsscscsccsssssscscsssssssscscssssssc" /></g></g></svg></button>
-                <input type="file" id="entryPhoto" name="entryPhoto" accept="image/*" class="visually-hidden">
-              </div>
-            </div>
+            </fieldset>
           </form>
         </section>
 
-        <section class="panel">
-          <div class="panel-head">
-            <div class="version-stack">
-              <strong>Code.gs <span id="codeVersionLabel">1.22</span></strong>
-              <strong>Index.html <span id="indexVersionLabel">1.30</span></strong>
-            </div>
-          </div>
-
+        <aside class="dust-panel dust-panel--settings" aria-labelledby="settingsTitle">
           <details id="specialDatesDetails">
-            <summary>Settings</summary>
+            <summary class="panel-head">
+              <h2 id="settingsTitle">Settings</h2>
+              <span>Special dates</span>
+            </summary>
             <div class="special-help">
               Use this section to control special-date behavior and add or review special-date rules.
             </div>
@@ -630,37 +686,47 @@
               For holidays that move each year, use Nth weekday or Relative to rule.
             </div>
             <form id="specialDateForm" style="margin-top: 12px;">
-              <div class="special-grid">
-                <div>
-                  <label for="specialLabel">Label</label>
-                  <input type="text" id="specialLabel" name="specialLabel" placeholder="Sarah's Birthday">
+              <fieldset>
+                <legend class="visually-hidden">Build a special date rule</legend>
+                <div class="special-grid">
+                  <div>
+                    <label for="specialLabel">Label</label>
+                    <input type="text" id="specialLabel" name="specialLabel" placeholder="Sarah's Birthday">
+                  </div>
+                  <div>
+                    <label for="specialRuleType">Rule</label>
+                    <select id="specialRuleType" name="specialRuleType">
+                      <option value="fixed-date">Fixed date</option>
+                      <option value="nth-weekday">Nth weekday</option>
+                      <option value="last-weekday">Last weekday</option>
+                      <option value="relative">Relative to rule</option>
+                    </select>
+                  </div>
+                  <div id="specialRuleFields" class="special-rule-fields"></div>
                 </div>
-                <div>
-                  <label for="specialRuleType">Rule</label>
-                  <select id="specialRuleType" name="specialRuleType">
-                    <option value="fixed-date">Fixed date</option>
-                    <option value="nth-weekday">Nth weekday</option>
-                    <option value="last-weekday">Last weekday</option>
-                    <option value="relative">Relative to rule</option>
-                  </select>
+                <div class="actions">
+                  <button type="submit" id="saveSpecialBtn">Add date</button>
                 </div>
-                <div id="specialRuleFields" class="special-rule-fields"></div>
-              </div>
-              <div class="actions">
-                <button type="submit" id="saveSpecialBtn">Add date</button>
-              </div>
+              </fieldset>
             </form>
 
             <div class="small-note" style="margin: 14px 0 10px;">Current special date rows</div>
             <div id="specialDates" class="special-list"></div>
           </details>
-        </section>
-      </div>
-    </div>
+        </aside>
+      </section>
+
+      <footer class="dust-footer">
+        <div class="version-stack">
+          <strong>Code.gs <span id="codeVersionLabel">1.24</span></strong>
+          <strong>Index.html <span id="indexVersionLabel">1.46</span></strong>
+        </div>
+      </footer>
+    </main>
 
     <template id="entryCardTemplate">
       <article class="entry-card">
-        <div class="entry-top">
+        <header class="entry-top">
           <div class="entry-top-left">
             <div class="entry-date" data-role="date"></div>
             <div class="entry-meta" data-role="weekday"></div>
@@ -669,9 +735,9 @@
             <div class="chips" data-role="chips"></div>
             <button type="button" class="secondary entry-edit-btn" data-role="edit">Edit</button>
           </div>
-        </div>
-        <div class="entry-content" data-role="content"></div>
-        <div class="entry-meta" data-role="modified"></div>
+        </header>
+        <section class="entry-content" data-role="content"></section>
+        <footer class="entry-meta" data-role="modified"></footer>
         <form class="entry-form hidden" data-role="form">
           <div class="entry-form-grid">
             <div class="entry-date-field">
@@ -710,8 +776,8 @@
         renderToken: 0,
       };
 
-      const INDEX_VERSION = '1.43';
-      const INDEX_CHANGELOG = 'v1.43 | Index.html | Matched the camera control height to the Save entry button height.';
+      const INDEX_VERSION = '1.46';
+      const INDEX_CHANGELOG = 'v1.46 | Index.html | Rehydrated browser location after new-entry saves and kept the editor save state disabled while saving.';
 
       const els = {
         todayPill: document.getElementById('todayPill'),
@@ -745,7 +811,7 @@
       };
 
       function setStatus(message) { els.status.textContent = message || ''; }
-      function setLoading(button, isLoading, label) { button.disabled = isLoading; button.textContent = isLoading ? 'Working...' : label; }
+      function setLoading(button, isLoading, label) { button.disabled = isLoading; button.textContent = isLoading ? 'Saving...' : label; }
       function versionMeta() {
         return {
           indexVersion: INDEX_VERSION,
@@ -757,7 +823,7 @@
         setStatus('Loading entries...');
         const dateArg = referenceDate === undefined ? (els.previewDate.value || state.previewDate || '') : referenceDate;
         google.script.run
-          .withSuccessHandler(data => {
+        .withSuccessHandler(data => {
             state.entries = data.entries || [];
             state.allEntries = data.allEntries || data.entries || [];
             state.specialDates = data.specialDates || [];
@@ -770,6 +836,7 @@
             renderShell();
             renderSpecialDates();
             renderEntries();
+            getBrowserLocationHint();
             setStatus('');
           })
           .withFailureHandler(err => {
@@ -780,6 +847,13 @@
 
       function renderShell() {
         els.todayPill.textContent = state.today ? formatDateForDisplay(state.today) : '';
+        if (els.todayPill) {
+          if (state.today) {
+            els.todayPill.setAttribute('datetime', state.today);
+          } else {
+            els.todayPill.removeAttribute('datetime');
+          }
+        }
         els.userPill.textContent = formatUserHeader(state.user);
         els.entryDate.value = state.today || els.entryDate.value;
         els.previewDate.value = state.previewDate || state.today || '';
@@ -1516,6 +1590,9 @@
         const gpsInput = card.querySelector('[data-role="gps-input"]');
         const contentInput = card.querySelector('[data-role="content-input"]');
         const cancelBtn = card.querySelector('[data-role="cancel"]');
+        const dateLabel = card.querySelector('[data-role="date-label"]');
+        const locationLabel = card.querySelector('[data-role="location-label"]');
+        const contentLabel = card.querySelector('[data-role="content-label"]');
 
         card.dataset.rowNumber = String(rowNumber);
         if (form) {
@@ -1579,17 +1656,29 @@
           });
         }
         if (dateInput) {
+          dateInput.id = `edit-date-${rowNumber}`;
           dateInput.value = entry.dateKey || '';
         }
+        if (dateLabel) {
+          dateLabel.htmlFor = `edit-date-${rowNumber}`;
+        }
         if (locationInput) {
+          locationInput.id = `edit-location-${rowNumber}`;
           locationInput.value = entry.location || '';
+        }
+        if (locationLabel) {
+          locationLabel.htmlFor = `edit-location-${rowNumber}`;
         }
         if (gpsInput) {
           gpsInput.name = 'gpsCoordinate';
           gpsInput.value = entry.gpsCoordinate || '';
         }
         if (contentInput) {
+          contentInput.id = `edit-content-${rowNumber}`;
           contentInput.value = entry.content || '';
+        }
+        if (contentLabel) {
+          contentLabel.htmlFor = `edit-content-${rowNumber}`;
         }
         if (cancelBtn) {
           cancelBtn.addEventListener('click', () => toggleEntryEdit(rowNumber, false));
@@ -1611,9 +1700,9 @@
       function submitEntryEdit(rowNumber) {
         const form = document.getElementById(`entry-form-${rowNumber}`);
         if (!form) return;
-        const dateInput = form.querySelector(`#edit-date-${rowNumber}`);
-        const locationInput = form.querySelector(`#edit-location-${rowNumber}`);
-        const contentInput = form.querySelector(`#edit-content-${rowNumber}`);
+        const dateInput = form.querySelector('[data-role="date-input"]');
+        const locationInput = form.querySelector('[data-role="location-input"]');
+        const contentInput = form.querySelector('[data-role="content-input"]');
         const contents = contentInput ? contentInput.value.trim() : '';
         const location = locationInput ? locationInput.value.trim() : '';
         const date = dateInput ? dateInput.value : '';
@@ -1733,6 +1822,7 @@
               if (els.entryGps) els.entryGps.value = '';
               if (els.entryPhoto) els.entryPhoto.value = '';
               setLoading(els.saveEntryBtn, false, 'Save entry');
+              getBrowserLocationHint();
               if (entry) {
                 if (entryMatchesCurrentPreview(entry)) {
                   upsertVisibleEntry(entry, true);

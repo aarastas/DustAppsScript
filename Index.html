@@ -3,7 +3,7 @@
   <head>
     <base target="_top">
     <!-- Version policy: bump the Index.html version comment here and the matching INDEX_VERSION constant in this file whenever this file changes. -->
-    <!-- Version 1.46: Rebuilt the page around semantic HTML5 sections, footer, and panel structure. -->
+    <!-- Version 1.47: Added entry tags, tag filtering, and tag-aware inline editing. -->
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="default">
@@ -281,6 +281,10 @@
         background: rgba(141, 90, 43, 0.16);
         color: var(--accent-strong);
       }
+      .chip.tag-chip {
+        background: rgba(141, 90, 43, 0.10);
+        color: var(--accent-strong);
+      }
       details > summary.panel-head {
         display: flex;
         align-items: baseline;
@@ -355,6 +359,7 @@
         margin-top: 10px;
       }
       .entry-date-field,
+      .entry-tag-field,
       .entry-location-field,
       .entry-content-field {
         min-width: 0;
@@ -368,6 +373,10 @@
         display: flex;
         gap: 10px;
         flex-wrap: wrap;
+      }
+      .tag-filter-field {
+        min-width: 0;
+        width: 100%;
       }
       .entry-content { white-space: pre-wrap; word-break: break-word; }
       .entry-meta { margin-top: 8px; color: var(--muted); font-size: 0.9rem; }
@@ -466,6 +475,7 @@
           align-items: start;
         }
         .entry-date-field,
+        .entry-tag-field,
         .entry-location-field,
         .entry-content-field,
         .entry-save {
@@ -476,7 +486,7 @@
           grid-column: 1 / -1;
         }
         .filter-row { grid-template-columns: 1fr 220px; align-items: end; }
-        .view-row { grid-template-columns: minmax(180px, 220px) 1fr auto; align-items: end; }
+        .view-row { grid-template-columns: minmax(180px, 220px) minmax(160px, 220px) 1fr; align-items: end; }
         .entry-form-grid { grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
         .entry-form-actions { justify-content: flex-start; }
         .special-grid { grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
@@ -534,6 +544,12 @@
                   <label class="visually-hidden" for="previewDate">Preview date</label>
                   <input type="date" id="previewDate" aria-label="Preview date">
                 </div>
+                <div class="tag-filter-field">
+                  <label for="tagFilter">Tag</label>
+                  <select id="tagFilter" name="tagFilter">
+                    <option value="">All tags</option>
+                  </select>
+                </div>
                 <div class="view-info" id="viewInfo" aria-live="polite"></div>
               </div>
               <!-- Search and sort retained in JS for future use.
@@ -577,6 +593,11 @@
                   <input type="text" id="entryLocation" name="entryLocation" placeholder="City, ST">
                   <input type="hidden" id="entryGps" name="entryGps">
                   <div id="locationHint" class="locating-note hidden">Locating...</div>
+                </div>
+                <div class="entry-tag-field">
+                  <label for="entryTag">Tag</label>
+                  <input type="text" id="entryTag" name="entryTag" list="entryTagOptions" placeholder="Project, trip, or mood">
+                  <datalist id="entryTagOptions"></datalist>
                 </div>
                 <div class="entry-content-field">
                   <div class="content-label-row">
@@ -718,8 +739,8 @@
 
       <footer class="dust-footer">
         <div class="version-stack">
-          <strong>Code.gs <span id="codeVersionLabel">1.24</span></strong>
-          <strong>Index.html <span id="indexVersionLabel">1.46</span></strong>
+          <strong>Code.gs <span id="codeVersionLabel">1.26</span></strong>
+          <strong>Index.html <span id="indexVersionLabel">1.47</span></strong>
         </div>
       </footer>
     </main>
@@ -749,6 +770,10 @@
               <input type="text" data-role="location-input">
               <input type="hidden" data-role="gps-input">
             </div>
+            <div class="entry-tag-field">
+              <label data-role="tag-label">Tag</label>
+              <input type="text" data-role="tag-input" list="entryTagOptions">
+            </div>
             <div class="entry-content-field">
               <label data-role="content-label">Entry text</label>
               <textarea data-role="content-input"></textarea>
@@ -767,6 +792,7 @@
         entries: [],
         allEntries: [],
         specialDates: [],
+        tagFilter: '',
         user: null,
         today: '',
         previewDate: '',
@@ -776,8 +802,8 @@
         renderToken: 0,
       };
 
-      const INDEX_VERSION = '1.46';
-      const INDEX_CHANGELOG = 'v1.46 | Index.html | Rehydrated browser location after new-entry saves and kept the editor save state disabled while saving.';
+      const INDEX_VERSION = '1.47';
+      const INDEX_CHANGELOG = 'v1.47 | Index.html | Added tag entry fields and a feed tag filter without changing date preview behavior.';
 
       const els = {
         todayPill: document.getElementById('todayPill'),
@@ -792,11 +818,13 @@
         specialDateForm: document.getElementById('specialDateForm'),
         entryDate: document.getElementById('entryDate'),
         entryLocation: document.getElementById('entryLocation'),
+        entryTag: document.getElementById('entryTag'),
         entryGps: document.getElementById('entryGps'),
         entryPhotoBtn: document.getElementById('entryPhotoBtn'),
         entryPhoto: document.getElementById('entryPhoto'),
         locationHint: document.getElementById('locationHint'),
         previewDate: document.getElementById('previewDate'),
+        tagFilter: document.getElementById('tagFilter'),
         contents: document.getElementById('contents'),
         specialDateDisplayMode: document.getElementById('specialDateDisplayMode'),
         userDisplayMode: document.getElementById('userDisplayMode'),
@@ -857,6 +885,7 @@
         els.userPill.textContent = formatUserHeader(state.user);
         els.entryDate.value = state.today || els.entryDate.value;
         els.previewDate.value = state.previewDate || state.today || '';
+        renderTagControls();
         if (els.specialDateDisplayMode && state.config && state.config.specialDateDisplayMode) {
           els.specialDateDisplayMode.value = state.config.specialDateDisplayMode;
         }
@@ -869,6 +898,79 @@
         if (els.indexVersionLabel) {
           els.indexVersionLabel.textContent = state.versions && state.versions.indexVersion ? state.versions.indexVersion : '';
         }
+      }
+
+      function normalizeTagValue(value) {
+        return String(value || '').trim();
+      }
+
+      function getUniqueTags(entries) {
+        const seen = {};
+        const tags = [];
+        (Array.isArray(entries) ? entries : []).forEach(entry => {
+          const tag = normalizeTagValue(entry && entry.tag);
+          if (!tag) {
+            return;
+          }
+          const key = tag.toLowerCase();
+          if (seen[key]) {
+            return;
+          }
+          seen[key] = tag;
+          tags.push(tag);
+        });
+        return tags.sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
+      }
+
+      function renderTagControls() {
+        renderTagFilterOptions();
+        renderEntryTagOptions();
+        if (els.tagFilter) {
+          els.tagFilter.value = state.tagFilter || '';
+        }
+      }
+
+      function renderTagFilterOptions() {
+        if (!els.tagFilter) return;
+        const selected = normalizeTagValue(state.tagFilter);
+        const tags = getUniqueTags(state.allEntries);
+        const fragment = document.createDocumentFragment();
+        const allOption = document.createElement('option');
+        allOption.value = '';
+        allOption.textContent = 'All tags';
+        fragment.appendChild(allOption);
+        tags.forEach(tag => {
+          const option = document.createElement('option');
+          option.value = tag;
+          option.textContent = tag;
+          fragment.appendChild(option);
+        });
+        if (selected && !tags.some(tag => tag.toLowerCase() === selected.toLowerCase())) {
+          const option = document.createElement('option');
+          option.value = selected;
+          option.textContent = selected;
+          fragment.appendChild(option);
+        }
+        els.tagFilter.replaceChildren(fragment);
+      }
+
+      function renderEntryTagOptions() {
+        const list = document.getElementById('entryTagOptions');
+        if (!list) return;
+        const selected = normalizeTagValue(els.entryTag ? els.entryTag.value : '');
+        const tags = getUniqueTags(state.allEntries);
+        const fragment = document.createDocumentFragment();
+        tags.forEach(tag => {
+          const option = document.createElement('option');
+          option.value = tag;
+          fragment.appendChild(option);
+        });
+        if (selected && !tags.some(tag => tag.toLowerCase() === selected.toLowerCase())) {
+          const option = document.createElement('option');
+          option.value = selected;
+          fragment.appendChild(option);
+        }
+        list.replaceChildren(fragment);
       }
 
       function renderSpecialDates() {
@@ -1497,8 +1599,12 @@
 
       function renderEntries() {
         const query = els.search ? (els.search.value || '').trim().toLowerCase() : '';
-        const specialContext = Array.isArray(state.view && state.view.labels) && state.view.labels.length > 0;
-        let entries = state.entries
+        const activeTag = normalizeTagValue(state.tagFilter);
+        const tagContext = !!activeTag;
+        const specialContext = !tagContext && Array.isArray(state.view && state.view.labels) && state.view.labels.length > 0;
+        let entries = (tagContext
+          ? state.allEntries.filter(entry => normalizeTagValue(entry && entry.tag).toLowerCase() === activeTag.toLowerCase())
+          : state.entries)
           .filter(entry => {
             if (!query) return true;
             return [
@@ -1506,6 +1612,7 @@
               entry.weekday,
               entry.content,
               entry.location,
+              entry.tag,
               entry.modifiedDisplay,
               (entry.labels || []).join(' '),
             ].join(' ').toLowerCase().includes(query);
@@ -1532,9 +1639,11 @@
         els.entries.replaceChildren();
         els.entryCount.textContent = `${entries.length} ${entries.length === 1 ? 'entry' : 'entries'}`;
         els.viewInfo.textContent = state.view
-          ? (state.view.mode === 'special'
-            ? (state.view.title || '')
-            : (state.view.reason || ''))
+          ? (tagContext
+            ? `Tag: ${activeTag}`
+            : (state.view.mode === 'special'
+              ? (state.view.title || '')
+              : (state.view.reason || '')))
           : '';
         if (!entries.length) {
           const empty = document.createElement('div');
@@ -1587,11 +1696,13 @@
         const form = card.querySelector('[data-role="form"]');
         const dateInput = card.querySelector('[data-role="date-input"]');
         const locationInput = card.querySelector('[data-role="location-input"]');
+        const tagInput = card.querySelector('[data-role="tag-input"]');
         const gpsInput = card.querySelector('[data-role="gps-input"]');
         const contentInput = card.querySelector('[data-role="content-input"]');
         const cancelBtn = card.querySelector('[data-role="cancel"]');
         const dateLabel = card.querySelector('[data-role="date-label"]');
         const locationLabel = card.querySelector('[data-role="location-label"]');
+        const tagLabel = card.querySelector('[data-role="tag-label"]');
         const contentLabel = card.querySelector('[data-role="content-label"]');
 
         card.dataset.rowNumber = String(rowNumber);
@@ -1618,6 +1729,12 @@
             chip.textContent = label;
             chips.appendChild(chip);
           });
+          if (entry.tag) {
+            const chip = document.createElement('span');
+            chip.className = 'chip tag-chip';
+            chip.textContent = entry.tag;
+            chips.appendChild(chip);
+          }
           if (entry.location) {
             const chip = document.createElement('span');
             chip.className = 'chip location-chip';
@@ -1669,6 +1786,13 @@
         if (locationLabel) {
           locationLabel.htmlFor = `edit-location-${rowNumber}`;
         }
+        if (tagInput) {
+          tagInput.id = `edit-tag-${rowNumber}`;
+          tagInput.value = entry.tag || '';
+        }
+        if (tagLabel) {
+          tagLabel.htmlFor = `edit-tag-${rowNumber}`;
+        }
         if (gpsInput) {
           gpsInput.name = 'gpsCoordinate';
           gpsInput.value = entry.gpsCoordinate || '';
@@ -1702,17 +1826,20 @@
         if (!form) return;
         const dateInput = form.querySelector('[data-role="date-input"]');
         const locationInput = form.querySelector('[data-role="location-input"]');
+        const tagInput = form.querySelector('[data-role="tag-input"]');
         const contentInput = form.querySelector('[data-role="content-input"]');
         const contents = contentInput ? contentInput.value.trim() : '';
         const location = locationInput ? locationInput.value.trim() : '';
+        const tag = tagInput ? tagInput.value.trim() : '';
         const date = dateInput ? dateInput.value : '';
-        const currentEntry = state.entries.find(item => Number(item.rowNumber) === Number(rowNumber));
+        const currentEntry = state.allEntries.find(item => Number(item.rowNumber) === Number(rowNumber));
         if (!contents) {
           setStatus('Enter some text before saving.');
           return;
         }
         const saveBtn = form.querySelector('button[type="submit"]');
         const gpsInput = form.querySelector('input[type="hidden"][name="gpsCoordinate"]');
+        const tagFilterActive = !!normalizeTagValue(state.tagFilter);
         setLoading(saveBtn, true, 'Save changes');
         setStatus('Saving entry...');
         google.script.run
@@ -1724,16 +1851,13 @@
               return;
             }
             if (entry) {
-              if (entryMatchesCurrentPreview(entry)) {
-                upsertVisibleEntry(entry, true);
-              } else {
-                upsertVisibleEntry(entry, false);
-              }
+              upsertVisibleEntry(entry, tagFilterActive || entryMatchesCurrentPreview(entry));
             } else if (currentEntry) {
               upsertVisibleEntry(Object.assign({}, currentEntry, {
                 content: contents,
                 location: location,
-              }), true);
+                tag: tag,
+              }), tagFilterActive || entryMatchesCurrentPreview(currentEntry));
             }
             setStatus('Entry updated.');
           })
@@ -1741,7 +1865,7 @@
             setLoading(saveBtn, false, 'Save changes');
             setStatus(err && err.message ? err.message : 'Failed to update entry.');
           })
-          .updateEntry(rowNumber, contents, date, location, gpsInput ? gpsInput.value : '', '', versionMeta());
+          .updateEntry(rowNumber, contents, date, location, tag, gpsInput ? gpsInput.value : '', '', versionMeta());
       }
 
       function safeTime(entry) {
@@ -1779,6 +1903,11 @@
           return [entry].concat(list);
         };
         state.allEntries = updateList(state.allEntries);
+        renderTagControls();
+        if (normalizeTagValue(state.tagFilter)) {
+          renderEntries();
+          return;
+        }
         if (shouldRender) {
           state.entries = updateList(state.entries);
           renderEntries();
@@ -1806,6 +1935,7 @@
         try {
           const contents = els.contents.value.trim();
           const location = els.entryLocation.value.trim();
+          const tag = els.entryTag ? els.entryTag.value.trim() : '';
           const gpsCoordinate = els.entryGps ? els.entryGps.value.trim() : '';
           const photoFile = els.entryPhoto && els.entryPhoto.files ? els.entryPhoto.files[0] : null;
           const photoDataUrl = photoFile ? await readFileAsDataUrl(photoFile) : '';
@@ -1815,20 +1945,18 @@
           }
           setLoading(els.saveEntryBtn, true, 'Save entry');
           setStatus('Saving entry...');
+          const tagFilterActive = !!normalizeTagValue(state.tagFilter);
           google.script.run
             .withSuccessHandler(entry => {
               els.contents.value = '';
               els.entryLocation.value = '';
+              if (els.entryTag) els.entryTag.value = '';
               if (els.entryGps) els.entryGps.value = '';
               if (els.entryPhoto) els.entryPhoto.value = '';
               setLoading(els.saveEntryBtn, false, 'Save entry');
               getBrowserLocationHint();
               if (entry) {
-                if (entryMatchesCurrentPreview(entry)) {
-                  upsertVisibleEntry(entry, true);
-                } else {
-                  upsertVisibleEntry(entry, false);
-                }
+                upsertVisibleEntry(entry, tagFilterActive || entryMatchesCurrentPreview(entry));
               }
               setStatus('Entry saved.');
             })
@@ -1836,7 +1964,7 @@
               setLoading(els.saveEntryBtn, false, 'Save entry');
               setStatus(err && err.message ? err.message : 'Failed to save entry.');
             })
-            .addEntry(contents, els.entryDate.value, location, gpsCoordinate, photoDataUrl, versionMeta());
+            .addEntry(contents, els.entryDate.value, location, tag, gpsCoordinate, photoDataUrl, versionMeta());
         } catch (error) {
           setLoading(els.saveEntryBtn, false, 'Save entry');
           setStatus(error && error.message ? error.message : 'Failed to read the selected photo.');
@@ -1850,6 +1978,12 @@
         const view = buildClientViewContext(previewKey);
         state.entries = view.entries || [];
         state.view = view.meta || null;
+        renderEntries();
+        setStatus('');
+      }
+
+      function changeTagFilter() {
+        state.tagFilter = normalizeTagValue(els.tagFilter ? els.tagFilter.value : '');
         renderEntries();
         setStatus('');
       }
@@ -2040,6 +2174,7 @@
         if (els.userDisplayMode) els.userDisplayMode.addEventListener('change', changeUserDisplayMode);
         if (els.search) els.search.addEventListener('input', renderEntries);
         if (els.sortMode) els.sortMode.addEventListener('change', renderEntries);
+        if (els.tagFilter) els.tagFilter.addEventListener('change', changeTagFilter);
         const refreshPreview = () => changePreviewDate(els.previewDate.value);
         els.previewDate.addEventListener('change', refreshPreview);
       }

@@ -3,7 +3,7 @@
   <head>
     <base target="_top">
     <!-- Version policy: bump the Index.html version comment here and the matching INDEX_VERSION constant in this file whenever this file changes. -->
-    <!-- Version 1.47: Added entry tags, tag filtering, and tag-aware inline editing. -->
+    <!-- Version 1.51: Added entry tags, tag filtering, tag-aware inline editing, global tag management, and special-date row editing. -->
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="default">
@@ -405,11 +405,34 @@
         line-height: 1.35;
         margin-top: 6px;
       }
+      .tag-management-grid {
+        display: grid;
+        gap: 12px;
+        grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      }
+      .tag-management-grid .rule-group {
+        display: grid;
+        gap: 6px;
+      }
+      .tag-management-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        margin-top: 4px;
+      }
       .special-rule-fields {
         grid-column: 1 / -1;
         display: grid;
         gap: 12px;
         grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+      }
+      .special-date-dropdown {
+        width: 100%;
+        min-height: 46px;
+        white-space: normal;
+      }
+      .special-date-dropdown option {
+        white-space: normal;
       }
       .special-rule-fields .rule-group {
         display: grid;
@@ -595,8 +618,8 @@
                   <div id="locationHint" class="locating-note hidden">Locating...</div>
                 </div>
                 <div class="entry-tag-field">
-                  <label for="entryTag">Tag</label>
-                  <input type="text" id="entryTag" name="entryTag" list="entryTagOptions" placeholder="Project, trip, or mood">
+                  <label for="entryTag">Tags</label>
+                  <input type="text" id="entryTag" name="entryTag" list="entryTagOptions" autocomplete="off" placeholder="Project, trip, mood">
                   <datalist id="entryTagOptions"></datalist>
                 </div>
                 <div class="entry-content-field">
@@ -732,15 +755,48 @@
             </form>
 
             <div class="small-note" style="margin: 14px 0 10px;">Current special date rows</div>
-            <div id="specialDates" class="special-list"></div>
+            <div class="special-help" style="margin-top: 0;">
+              Choose a special date row from the dropdown to review, edit, or delete that row.
+            </div>
+            <select id="specialDates" class="special-date-dropdown" size="1" aria-label="Current special date rows"></select>
+            <div id="specialDateRowInfo" class="special-rule-note"></div>
+            <div class="tag-management-actions" style="margin-top: 10px;">
+              <button type="button" id="deleteSpecialDateBtn" class="secondary">Delete selected date</button>
+            </div>
+
+            <div class="small-note" style="margin: 18px 0 8px;">Tag management</div>
+            <div class="special-help">
+              Rename or delete a tag across every journal entry in the spreadsheet. Renaming updates matching tags everywhere.
+            </div>
+            <form id="tagManagementForm" style="margin-top: 12px;">
+              <fieldset>
+                <legend class="visually-hidden">Manage tags across all entries</legend>
+                <div class="tag-management-grid">
+                  <div class="rule-group">
+                    <label for="tagManageFrom">Current tag</label>
+                    <select id="tagManageFrom" name="tagManageFrom">
+                      <option value="">No tags available</option>
+                    </select>
+                  </div>
+                  <div class="rule-group">
+                    <label for="tagManageTo">New tag</label>
+                    <input type="text" id="tagManageTo" name="tagManageTo" autocomplete="off" placeholder="Camping">
+                  </div>
+                </div>
+                <div class="tag-management-actions">
+                  <button type="button" id="renameTagBtn">Rename tag</button>
+                  <button type="button" class="secondary" id="deleteTagBtn">Delete tag</button>
+                </div>
+              </fieldset>
+            </form>
           </details>
         </aside>
       </section>
 
       <footer class="dust-footer">
         <div class="version-stack">
-          <strong>Code.gs <span id="codeVersionLabel">1.26</span></strong>
-          <strong>Index.html <span id="indexVersionLabel">1.47</span></strong>
+          <strong>Code.gs <span id="codeVersionLabel">1.28</span></strong>
+          <strong>Index.html <span id="indexVersionLabel">1.51</span></strong>
         </div>
       </footer>
     </main>
@@ -771,8 +827,8 @@
               <input type="hidden" data-role="gps-input">
             </div>
             <div class="entry-tag-field">
-              <label data-role="tag-label">Tag</label>
-              <input type="text" data-role="tag-input" list="entryTagOptions">
+              <label data-role="tag-label">Tags</label>
+              <input type="text" data-role="tag-input" list="entryTagOptions" autocomplete="off" placeholder="Project, trip, mood">
             </div>
             <div class="entry-content-field">
               <label data-role="content-label">Entry text</label>
@@ -793,6 +849,7 @@
         allEntries: [],
         specialDates: [],
         tagFilter: '',
+        selectedSpecialDateRow: '',
         user: null,
         today: '',
         previewDate: '',
@@ -802,8 +859,8 @@
         renderToken: 0,
       };
 
-      const INDEX_VERSION = '1.47';
-      const INDEX_CHANGELOG = 'v1.47 | Index.html | Added tag entry fields and a feed tag filter without changing date preview behavior.';
+      const INDEX_VERSION = '1.51';
+      const INDEX_CHANGELOG = 'v1.51 | Index.html | Made the special date dropdown actionable for edit and delete.';
 
       const els = {
         todayPill: document.getElementById('todayPill'),
@@ -811,11 +868,13 @@
         status: document.getElementById('status'),
         entries: document.getElementById('entries'),
         specialDates: document.getElementById('specialDates'),
+        specialDateRowInfo: document.getElementById('specialDateRowInfo'),
         entryCount: document.getElementById('entryCount'),
         search: document.getElementById('search'),
         sortMode: document.getElementById('sortMode'),
         entryForm: document.getElementById('entryForm'),
         specialDateForm: document.getElementById('specialDateForm'),
+        tagManagementForm: document.getElementById('tagManagementForm'),
         entryDate: document.getElementById('entryDate'),
         entryLocation: document.getElementById('entryLocation'),
         entryTag: document.getElementById('entryTag'),
@@ -833,6 +892,11 @@
         specialLabel: document.getElementById('specialLabel'),
         specialRuleType: document.getElementById('specialRuleType'),
         specialRuleFields: document.getElementById('specialRuleFields'),
+        tagManageFrom: document.getElementById('tagManageFrom'),
+        tagManageTo: document.getElementById('tagManageTo'),
+        renameTagBtn: document.getElementById('renameTagBtn'),
+        deleteTagBtn: document.getElementById('deleteTagBtn'),
+        deleteSpecialDateBtn: document.getElementById('deleteSpecialDateBtn'),
         saveEntryBtn: document.getElementById('saveEntryBtn'),
         saveSpecialBtn: document.getElementById('saveSpecialBtn'),
         viewInfo: document.getElementById('viewInfo'),
@@ -904,20 +968,52 @@
         return String(value || '').trim();
       }
 
+      function splitTagList(value) {
+        const seen = {};
+        const tags = [];
+        String(value || '')
+          .split(',')
+          .map(part => part.trim())
+          .filter(Boolean)
+          .forEach(tag => {
+            const key = tag.toLowerCase();
+            if (seen[key]) {
+              return;
+            }
+            seen[key] = true;
+            tags.push(tag);
+          });
+        return tags;
+      }
+
+      function getEntryTags(entry) {
+        if (!entry) return [];
+        if (Array.isArray(entry.tags) && entry.tags.length) {
+          return splitTagList(entry.tags.join(', '));
+        }
+        return splitTagList(entry.tag);
+      }
+
+      function normalizeTagListInput(value) {
+        return splitTagList(value).join(', ');
+      }
+
+      function normalizeSingleTagInput(value) {
+        return splitTagList(value)[0] || '';
+      }
+
       function getUniqueTags(entries) {
         const seen = {};
         const tags = [];
         (Array.isArray(entries) ? entries : []).forEach(entry => {
-          const tag = normalizeTagValue(entry && entry.tag);
-          if (!tag) {
-            return;
-          }
-          const key = tag.toLowerCase();
-          if (seen[key]) {
-            return;
-          }
-          seen[key] = tag;
-          tags.push(tag);
+          getEntryTags(entry).forEach(tag => {
+            const key = tag.toLowerCase();
+            if (seen[key]) {
+              return;
+            }
+            seen[key] = tag;
+            tags.push(tag);
+          });
         });
         return tags.sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
       }
@@ -925,6 +1021,7 @@
       function renderTagControls() {
         renderTagFilterOptions();
         renderEntryTagOptions();
+        renderTagManagementOptions();
         if (els.tagFilter) {
           els.tagFilter.value = state.tagFilter || '';
         }
@@ -965,53 +1062,280 @@
           option.value = tag;
           fragment.appendChild(option);
         });
+        if (selected) {
+          splitTagList(selected).forEach(tag => {
+            if (!tags.some(existing => existing.toLowerCase() === tag.toLowerCase())) {
+              const option = document.createElement('option');
+              option.value = tag;
+              fragment.appendChild(option);
+            }
+          });
+        }
+        list.replaceChildren(fragment);
+      }
+
+      function renderTagManagementOptions() {
+        if (!els.tagManageFrom) return;
+        const selected = normalizeTagValue(els.tagManageFrom.value);
+        const tags = getUniqueTags(state.allEntries);
+        const fragment = document.createDocumentFragment();
+        if (!tags.length) {
+          const option = document.createElement('option');
+          option.value = '';
+          option.textContent = 'No tags available';
+          fragment.appendChild(option);
+        } else {
+          const empty = document.createElement('option');
+          empty.value = '';
+          empty.textContent = 'Select a tag';
+          fragment.appendChild(empty);
+          tags.forEach(tag => {
+            const option = document.createElement('option');
+            option.value = tag;
+            option.textContent = tag;
+            fragment.appendChild(option);
+          });
+        }
         if (selected && !tags.some(tag => tag.toLowerCase() === selected.toLowerCase())) {
           const option = document.createElement('option');
           option.value = selected;
+          option.textContent = selected;
           fragment.appendChild(option);
         }
-        list.replaceChildren(fragment);
+        els.tagManageFrom.replaceChildren(fragment);
+        if (selected) {
+          els.tagManageFrom.value = selected;
+        }
+      }
+
+      function handleTagAutocompleteKeydown(event, input) {
+        if (!input || !event || event.key !== 'Tab' || event.shiftKey || event.ctrlKey || event.metaKey || event.altKey) {
+          return;
+        }
+
+        const completed = completeTagToken(input.value, input.selectionStart, getUniqueTags(state.allEntries));
+        if (!completed || completed.value === input.value) {
+          return;
+        }
+
+        event.preventDefault();
+        input.value = completed.value;
+        if (typeof completed.caret === 'number' && input.setSelectionRange) {
+          input.setSelectionRange(completed.caret, completed.caret);
+        }
+      }
+
+      function completeTagToken(value, caretPosition, tags) {
+        const text = String(value || '');
+        const caret = typeof caretPosition === 'number' ? caretPosition : text.length;
+        const beforeCaret = text.slice(0, caret);
+        const afterCaret = text.slice(caret);
+        const commaIndex = beforeCaret.lastIndexOf(',');
+        const tokenStart = commaIndex === -1 ? 0 : commaIndex + 1;
+        const tokenPrefix = beforeCaret.slice(tokenStart).trim();
+        if (!tokenPrefix) {
+          return null;
+        }
+
+        const matches = (Array.isArray(tags) ? tags : []).filter(tag => tag.toLowerCase().indexOf(tokenPrefix.toLowerCase()) === 0);
+        if (!matches.length) {
+          return null;
+        }
+
+        const match = matches[0];
+        const left = beforeCaret.slice(0, tokenStart).replace(/\s*$/, '');
+        const completedLeft = left
+          ? (left.endsWith(',') ? `${left} ${match}` : `${left}, ${match}`)
+          : match;
+        const remainder = afterCaret.replace(/^\s*,?\s*/, '');
+        const hasMore = remainder.length > 0;
+        const valueOut = hasMore ? `${completedLeft}, ${remainder}` : `${completedLeft}, `;
+        const caretOut = completedLeft.length + 2;
+
+        return {
+          value: valueOut,
+          caret: caretOut,
+        };
       }
 
       function renderSpecialDates() {
         els.specialDates.replaceChildren();
         if (!state.specialDates.length) {
-          const empty = document.createElement('div');
-          empty.className = 'special-card muted';
+          const empty = document.createElement('option');
+          empty.value = '';
           empty.textContent = 'No special dates yet.';
+          empty.disabled = true;
+          empty.selected = true;
           els.specialDates.appendChild(empty);
+          if (els.specialDateRowInfo) {
+            els.specialDateRowInfo.textContent = '';
+          }
           return;
         }
         const fragment = document.createDocumentFragment();
+        const placeholder = document.createElement('option');
+        placeholder.value = '';
+        placeholder.textContent = 'Select a special date row';
+        placeholder.disabled = true;
+        placeholder.selected = !state.selectedSpecialDateRow;
+        fragment.appendChild(placeholder);
         state.specialDates.slice().sort((a, b) => {
           return String(a.type || '').localeCompare(String(b.type || '')) ||
             String(a.label || '').localeCompare(String(b.label || '')) ||
             String(a.dateKey || a.ruleType || '').localeCompare(String(b.dateKey || b.ruleType || ''));
-        }).filter((item, index, list) => {
-          const key = specialDateKey(item);
-          return list.findIndex(other => specialDateKey(other) === key) === index;
         }).forEach(item => {
-          const card = document.createElement('div');
-          card.className = 'special-card';
-          const line = document.createElement('div');
-          line.className = 'special-line';
-          const label = document.createElement('strong');
-          label.textContent = item.label;
-          const date = document.createElement('span');
-          date.className = 'special-date-meta';
-          date.textContent = describeSpecialDate(item);
-          const repeat = document.createElement('span');
-          repeat.className = 'chip special-chip';
-          repeat.textContent = String(item.type || '').toLowerCase() === 'holiday'
-            ? 'Annual'
-            : 'Fixed date';
-          line.appendChild(label);
-          line.appendChild(date);
-          line.appendChild(repeat);
-          card.appendChild(line);
-          fragment.appendChild(card);
+          const option = document.createElement('option');
+          option.value = String(item.rowNumber || '');
+          option.textContent = `${item.label} — ${describeSpecialDate(item) || 'Special date'}`;
+          option.title = `${item.label} | ${describeSpecialDate(item) || 'Special date'}`;
+          fragment.appendChild(option);
         });
         els.specialDates.appendChild(fragment);
+        const selectedRow = String(state.selectedSpecialDateRow || '');
+        if (selectedRow && state.specialDates.some(item => String(item.rowNumber || '') === selectedRow)) {
+          els.specialDates.value = selectedRow;
+        }
+        syncSpecialDateSelectionUi();
+        const selected = getSelectedSpecialDateItem();
+        if (selected) {
+          renderSpecialDateFieldsFromItem(selected);
+        }
+      }
+
+      function changeSpecialDateSelection() {
+        state.selectedSpecialDateRow = normalizeTagValue(els.specialDates ? els.specialDates.value : '');
+        const selected = getSelectedSpecialDateItem();
+        syncSpecialDateSelectionUi();
+        renderSpecialDateFieldsFromItem(selected);
+      }
+
+      function getSelectedSpecialDateItem() {
+        const rowNumber = Number(state.selectedSpecialDateRow || (els.specialDates ? els.specialDates.value : ''));
+        if (!Number.isInteger(rowNumber) || rowNumber < 2) {
+          return null;
+        }
+        return state.specialDates.find(item => Number(item.rowNumber) === rowNumber) || null;
+      }
+
+      function syncSpecialDateSelectionUi() {
+        const selected = getSelectedSpecialDateItem();
+        if (!selected && state.selectedSpecialDateRow) {
+          state.selectedSpecialDateRow = '';
+          if (els.specialDates) {
+            els.specialDates.value = '';
+          }
+        }
+        if (els.specialDateRowInfo) {
+          els.specialDateRowInfo.textContent = selected
+            ? `${selected.label} | ${describeSpecialDate(selected) || 'Special date'}`
+            : 'Select a row to review details.';
+        }
+        if (els.saveSpecialBtn) {
+          els.saveSpecialBtn.textContent = selected ? 'Update date' : 'Add date';
+        }
+        if (els.deleteSpecialDateBtn) {
+          els.deleteSpecialDateBtn.disabled = !selected;
+        }
+      }
+
+      function renderSpecialDateFieldsFromItem(item) {
+        if (!item) {
+          renderSpecialRuleFields();
+          return;
+        }
+        const ruleType = guessSpecialDateRuleType(item);
+        if (els.specialLabel) {
+          els.specialLabel.value = item.label || '';
+        }
+        if (els.specialRuleType) {
+          els.specialRuleType.value = ruleType;
+        }
+        renderSpecialRuleFields();
+        fillSpecialDateRuleFields(item, ruleType);
+      }
+
+      function guessSpecialDateRuleType(item) {
+        if (!item) return 'fixed-date';
+        const type = String(item.type || '').toLowerCase();
+        const ruleType = String(item.ruleType || '').toLowerCase();
+        if (type !== 'holiday') {
+          return 'fixed-date';
+        }
+        if (ruleType === 'fixed-month-day') return 'fixed-date';
+        if (ruleType === 'nth-weekday' || ruleType === 'last-weekday' || ruleType === 'relative') return ruleType;
+        if (ruleType === 'easter') return 'relative';
+        return 'fixed-date';
+      }
+
+      function fillSpecialDateRuleFields(item, ruleType) {
+        const actualRuleType = String(ruleType || '').toLowerCase();
+        if (actualRuleType === 'fixed-date') {
+          const input = document.getElementById('specialDate');
+          if (input) {
+            input.value = item && item.ruleValue ? monthDayToDateValue_(item.ruleValue) : '';
+          }
+          return;
+        }
+        if (actualRuleType === 'nth-weekday') {
+          const parts = String(item && item.ruleValue ? item.ruleValue : '').split(',').map(part => part.trim());
+          const nth = document.getElementById('specialNth');
+          const weekday = document.getElementById('specialNthWeekday');
+          const month = document.getElementById('specialNthMonth');
+          if (nth) nth.value = parts[0] || '1';
+          if (weekday) weekday.value = parts[1] || '0';
+          if (month) month.value = parts[2] || '0';
+          return;
+        }
+        if (actualRuleType === 'last-weekday') {
+          const parts = String(item && item.ruleValue ? item.ruleValue : '').split(',').map(part => part.trim());
+          const weekday = document.getElementById('specialLastWeekday');
+          const month = document.getElementById('specialLastMonth');
+          if (weekday) weekday.value = parts[0] || '0';
+          if (month) month.value = parts[1] || '0';
+          return;
+        }
+        if (actualRuleType === 'relative') {
+          const relative = decodeRelativeRuleValue(item && item.ruleValue ? item.ruleValue : '');
+          const baseType = document.getElementById('specialRelativeBaseType');
+          const offset = document.getElementById('specialRelativeOffset');
+          if (baseType && relative) baseType.value = relative.baseType || 'easter';
+          if (offset && relative) offset.value = String(relative.offsetDays || '0');
+          if (relative) {
+            renderRelativeBaseFields(relative.baseType || 'easter');
+            fillRelativeBaseRuleFields(relative.baseType || 'easter', relative.baseValue || '');
+          }
+        }
+      }
+
+      function fillRelativeBaseRuleFields(baseType, baseValue) {
+        const type = String(baseType || '').toLowerCase();
+        const value = String(baseValue || '');
+        if (type === 'nth-weekday') {
+          const parts = value.split(',').map(part => part.trim());
+          const nth = document.getElementById('specialRelativeNth');
+          const weekday = document.getElementById('specialRelativeWeekday');
+          const month = document.getElementById('specialRelativeMonth');
+          if (nth) nth.value = parts[0] || '1';
+          if (weekday) weekday.value = parts[1] || '0';
+          if (month) month.value = parts[2] || '0';
+          return;
+        }
+        if (type === 'last-weekday') {
+          const parts = value.split(',').map(part => part.trim());
+          const weekday = document.getElementById('specialRelativeWeekday');
+          const month = document.getElementById('specialRelativeMonth');
+          if (weekday) weekday.value = parts[0] || '0';
+          if (month) month.value = parts[1] || '0';
+        }
+      }
+
+      function monthDayToDateValue_(value) {
+        const parts = String(value || '').split('/').map(part => part.trim());
+        if (parts.length !== 2) return '';
+        const month = Number(parts[0]);
+        const day = Number(parts[1]);
+        if (!Number.isInteger(month) || !Number.isInteger(day)) return '';
+        return `2026-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
       }
 
       function describeSpecialDate(item) {
@@ -1603,7 +1927,7 @@
         const tagContext = !!activeTag;
         const specialContext = !tagContext && Array.isArray(state.view && state.view.labels) && state.view.labels.length > 0;
         let entries = (tagContext
-          ? state.allEntries.filter(entry => normalizeTagValue(entry && entry.tag).toLowerCase() === activeTag.toLowerCase())
+          ? state.allEntries.filter(entry => getEntryTags(entry).some(tag => tag.toLowerCase() === activeTag.toLowerCase()))
           : state.entries)
           .filter(entry => {
             if (!query) return true;
@@ -1612,7 +1936,7 @@
               entry.weekday,
               entry.content,
               entry.location,
-              entry.tag,
+              getEntryTags(entry).join(' '),
               entry.modifiedDisplay,
               (entry.labels || []).join(' '),
             ].join(' ').toLowerCase().includes(query);
@@ -1729,12 +2053,12 @@
             chip.textContent = label;
             chips.appendChild(chip);
           });
-          if (entry.tag) {
+          getEntryTags(entry).forEach(tag => {
             const chip = document.createElement('span');
             chip.className = 'chip tag-chip';
-            chip.textContent = entry.tag;
+            chip.textContent = tag;
             chips.appendChild(chip);
-          }
+          });
           if (entry.location) {
             const chip = document.createElement('span');
             chip.className = 'chip location-chip';
@@ -1788,7 +2112,8 @@
         }
         if (tagInput) {
           tagInput.id = `edit-tag-${rowNumber}`;
-          tagInput.value = entry.tag || '';
+          tagInput.value = getEntryTags(entry).join(', ');
+          tagInput.addEventListener('keydown', event => handleTagAutocompleteKeydown(event, tagInput));
         }
         if (tagLabel) {
           tagLabel.htmlFor = `edit-tag-${rowNumber}`;
@@ -1830,7 +2155,7 @@
         const contentInput = form.querySelector('[data-role="content-input"]');
         const contents = contentInput ? contentInput.value.trim() : '';
         const location = locationInput ? locationInput.value.trim() : '';
-        const tag = tagInput ? tagInput.value.trim() : '';
+        const tag = normalizeTagListInput(tagInput ? tagInput.value : '');
         const date = dateInput ? dateInput.value : '';
         const currentEntry = state.allEntries.find(item => Number(item.rowNumber) === Number(rowNumber));
         if (!contents) {
@@ -1859,6 +2184,7 @@
                 tag: tag,
               }), tagFilterActive || entryMatchesCurrentPreview(currentEntry));
             }
+            toggleEntryEdit(rowNumber, false);
             setStatus('Entry updated.');
           })
           .withFailureHandler(err => {
@@ -1935,7 +2261,7 @@
         try {
           const contents = els.contents.value.trim();
           const location = els.entryLocation.value.trim();
-          const tag = els.entryTag ? els.entryTag.value.trim() : '';
+          const tag = normalizeTagListInput(els.entryTag ? els.entryTag.value : '');
           const gpsCoordinate = els.entryGps ? els.entryGps.value.trim() : '';
           const photoFile = els.entryPhoto && els.entryPhoto.files ? els.entryPhoto.files[0] : null;
           const photoDataUrl = photoFile ? await readFileAsDataUrl(photoFile) : '';
@@ -1986,6 +2312,77 @@
         state.tagFilter = normalizeTagValue(els.tagFilter ? els.tagFilter.value : '');
         renderEntries();
         setStatus('');
+      }
+
+      function renameSelectedTag() {
+        const fromTag = normalizeTagValue(els.tagManageFrom ? els.tagManageFrom.value : '');
+        const toTag = normalizeSingleTagInput(els.tagManageTo ? els.tagManageTo.value : '');
+        if (!fromTag) {
+          setStatus('Select a tag to rename.');
+          return;
+        }
+        if (!toTag) {
+          setStatus('Enter the replacement tag name.');
+          return;
+        }
+        if (fromTag.toLowerCase() === toTag.toLowerCase()) {
+          setStatus('Choose a different tag name.');
+          return;
+        }
+        setStatus('Renaming tag...');
+        setLoading(els.renameTagBtn, true, 'Rename tag');
+        setLoading(els.deleteTagBtn, true, 'Delete tag');
+        google.script.run
+          .withSuccessHandler(result => {
+            if (normalizeTagValue(state.tagFilter).toLowerCase() === fromTag.toLowerCase()) {
+              state.tagFilter = toTag;
+              if (els.tagFilter) {
+                els.tagFilter.value = toTag;
+              }
+            }
+            if (els.tagManageTo) els.tagManageTo.value = '';
+            if (els.tagManageFrom) els.tagManageFrom.value = toTag;
+            setLoading(els.renameTagBtn, false, 'Rename tag');
+            setLoading(els.deleteTagBtn, false, 'Delete tag');
+            loadAppData(currentPreviewDateKey());
+          })
+          .withFailureHandler(err => {
+            setLoading(els.renameTagBtn, false, 'Rename tag');
+            setLoading(els.deleteTagBtn, false, 'Delete tag');
+            setStatus(err && err.message ? err.message : 'Failed to rename tag.');
+          })
+          .renameJournalTag(fromTag, toTag, versionMeta());
+      }
+
+      function deleteSelectedTag() {
+        const fromTag = normalizeTagValue(els.tagManageFrom ? els.tagManageFrom.value : '');
+        if (!fromTag) {
+          setStatus('Select a tag to delete.');
+          return;
+        }
+        setStatus('Deleting tag...');
+        setLoading(els.renameTagBtn, true, 'Rename tag');
+        setLoading(els.deleteTagBtn, true, 'Delete tag');
+        google.script.run
+          .withSuccessHandler(result => {
+            if (normalizeTagValue(state.tagFilter).toLowerCase() === fromTag.toLowerCase()) {
+              state.tagFilter = '';
+              if (els.tagFilter) {
+                els.tagFilter.value = '';
+              }
+            }
+            if (els.tagManageTo) els.tagManageTo.value = '';
+            if (els.tagManageFrom) els.tagManageFrom.value = '';
+            setLoading(els.renameTagBtn, false, 'Rename tag');
+            setLoading(els.deleteTagBtn, false, 'Delete tag');
+            loadAppData(currentPreviewDateKey());
+          })
+          .withFailureHandler(err => {
+            setLoading(els.renameTagBtn, false, 'Rename tag');
+            setLoading(els.deleteTagBtn, false, 'Delete tag');
+            setStatus(err && err.message ? err.message : 'Failed to delete tag.');
+          })
+          .deleteJournalTag(fromTag, versionMeta());
       }
 
       function changeSpecialDateDisplayMode() {
@@ -2084,6 +2481,8 @@
         const ruleType = String(els.specialRuleType.value || 'fixed-date').toLowerCase();
         let date = '';
         let ruleValue = '';
+        const selected = getSelectedSpecialDateItem();
+        const isEditing = !!selected;
 
         if (!label) {
           setStatus('Add a label.');
@@ -2145,27 +2544,83 @@
           return;
         }
 
-        setLoading(els.saveSpecialBtn, true, 'Add date');
+        setLoading(els.saveSpecialBtn, true, isEditing ? 'Update date' : 'Add date');
         setStatus('Saving special date...');
+        const successHandler = () => {
+          clearSpecialDateSelection();
+          setLoading(els.saveSpecialBtn, false, 'Add date');
+          setStatus('Special date saved.');
+          loadAppData(els.previewDate.value || state.previewDate || '');
+        };
+        const failureHandler = err => {
+          setLoading(els.saveSpecialBtn, false, isEditing ? 'Update date' : 'Add date');
+          setStatus(err && err.message ? err.message : 'Failed to save special date.');
+        };
+        if (isEditing) {
+          google.script.run
+            .withSuccessHandler(successHandler)
+            .withFailureHandler(failureHandler)
+            .updateSpecialDate(selected.rowNumber, label, ruleType, date, ruleValue, versionMeta());
+        } else {
+          google.script.run
+            .withSuccessHandler(successHandler)
+            .withFailureHandler(failureHandler)
+            .addSpecialDate(label, ruleType, date, ruleValue, versionMeta());
+        }
+      }
+
+      function clearSpecialDateSelection() {
+        state.selectedSpecialDateRow = '';
+        if (els.specialDates) {
+          els.specialDates.value = '';
+        }
+        if (els.specialDateRowInfo) {
+          els.specialDateRowInfo.textContent = 'Select a row to review details.';
+        }
+        if (els.saveSpecialBtn) {
+          els.saveSpecialBtn.textContent = 'Add date';
+        }
+        if (els.deleteSpecialDateBtn) {
+          els.deleteSpecialDateBtn.disabled = true;
+        }
+        if (els.specialLabel) {
+          els.specialLabel.value = '';
+        }
+        if (els.specialRuleType) {
+          els.specialRuleType.value = 'fixed-date';
+        }
+        renderSpecialRuleFields();
+      }
+
+      function deleteSelectedSpecialDate() {
+        const selected = getSelectedSpecialDateItem();
+        if (!selected) {
+          setStatus('Select a special date row to delete.');
+          return;
+        }
+        setLoading(els.deleteSpecialDateBtn, true, 'Deleting...');
+        setLoading(els.saveSpecialBtn, true, 'Delete date');
+        setStatus('Deleting special date...');
         google.script.run
           .withSuccessHandler(() => {
-            els.specialLabel.value = '';
-            els.specialRuleType.value = 'fixed-date';
-            renderSpecialRuleFields();
+            clearSpecialDateSelection();
+            setLoading(els.deleteSpecialDateBtn, false, 'Delete selected date');
             setLoading(els.saveSpecialBtn, false, 'Add date');
-            setStatus('Special date saved.');
+            setStatus('Special date deleted.');
             loadAppData(els.previewDate.value || state.previewDate || '');
           })
           .withFailureHandler(err => {
+            setLoading(els.deleteSpecialDateBtn, false, 'Delete selected date');
             setLoading(els.saveSpecialBtn, false, 'Add date');
-            setStatus(err && err.message ? err.message : 'Failed to save special date.');
+            setStatus(err && err.message ? err.message : 'Failed to delete special date.');
           })
-          .addSpecialDate(label, ruleType, date, ruleValue, versionMeta());
+          .deleteSpecialDate(selected.rowNumber, versionMeta());
       }
 
       function wireEvents() {
         els.entryForm.addEventListener('submit', event => { event.preventDefault(); submitEntry(); });
         els.specialDateForm.addEventListener('submit', event => { event.preventDefault(); submitSpecialDate(); });
+        if (els.tagManagementForm) els.tagManagementForm.addEventListener('submit', event => { event.preventDefault(); renameSelectedTag(); });
         els.specialRuleType.addEventListener('change', renderSpecialRuleFields);
         if (els.entryPhotoBtn && els.entryPhoto) {
           els.entryPhotoBtn.addEventListener('click', () => els.entryPhoto.click());
@@ -2175,6 +2630,17 @@
         if (els.search) els.search.addEventListener('input', renderEntries);
         if (els.sortMode) els.sortMode.addEventListener('change', renderEntries);
         if (els.tagFilter) els.tagFilter.addEventListener('change', changeTagFilter);
+        if (els.specialDates) els.specialDates.addEventListener('change', changeSpecialDateSelection);
+        if (els.entryTag) els.entryTag.addEventListener('keydown', event => handleTagAutocompleteKeydown(event, els.entryTag));
+        if (els.renameTagBtn) els.renameTagBtn.addEventListener('click', renameSelectedTag);
+        if (els.deleteTagBtn) els.deleteTagBtn.addEventListener('click', deleteSelectedTag);
+        if (els.deleteSpecialDateBtn) els.deleteSpecialDateBtn.addEventListener('click', deleteSelectedSpecialDate);
+        if (els.tagManageFrom) els.tagManageFrom.addEventListener('change', () => {
+          if (els.tagManageTo) {
+            els.tagManageTo.value = '';
+            els.tagManageTo.focus();
+          }
+        });
         const refreshPreview = () => changePreviewDate(els.previewDate.value);
         els.previewDate.addEventListener('change', refreshPreview);
       }

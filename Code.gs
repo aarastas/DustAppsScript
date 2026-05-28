@@ -9,10 +9,11 @@ const SPECIAL_DATE_DISPLAY_MODE_PROPERTY = 'DUST_SPECIAL_DATE_DISPLAY_MODE';
 const SPECIAL_DATE_DISPLAY_MODE_SPECIAL_ONLY = 'special-only';
 const SPECIAL_DATE_DISPLAY_MODE_SPECIAL_AND_DEFAULT = 'special-and-default';
 const PHOTO_FOLDER_NAME = 'Dust Photos';
-const JOURNAL_HEADER = ['Timestamp', 'Content', 'Location', 'Date', 'Modified', 'GPSCoordinate', 'Photo'];
+const JOURNAL_HEADER = ['Timestamp', 'Content', 'Location', 'Date', 'Modified', 'GPSCoordinate', 'Photo', 'Tag'];
 const PHOTO_COLUMN_INDEX = 7;
-const CODE_VERSION = '1.25'; // Version 1.25: Made app-data cache keys aware of client index version metadata.
-const CODE_CHANGELOG = 'v1.25 | Code.gs | Made app-data cache keys aware of client index version metadata.';
+const TAG_COLUMN_INDEX = 8;
+const CODE_VERSION = '1.26'; // Version 1.26: Added persistent entry tags and kept existing date-based views intact.
+const CODE_CHANGELOG = 'v1.26 | Code.gs | Added persistent entry tags and kept existing date-based views intact.';
 const PARSED_JOURNAL_CACHE_PREFIX = 'parsed-journal';
 const PARSED_SPECIAL_DATES_CACHE_PREFIX = 'parsed-special-dates';
 const PARSED_DATA_CACHE_TTL_SECONDS = 300;
@@ -198,13 +199,15 @@ function syncDustMeta_(clientMeta) {
   sheet.hideSheet();
 }
 
-function addEntry(contents, customDate, location, gpsCoordinate, photoDataUrl, clientMeta) {
+function addEntry(contents, customDate, location, tagOrGpsCoordinate, gpsCoordinateOrPhotoDataUrl, photoDataUrlOrClientMeta, clientMeta) {
   const sheet = getOrCreateSheet_(JOURNAL_SHEET_NAME);
   ensureJournalHeader_(sheet);
+  const normalized = normalizeEntryArgs_(arguments);
   const text = String(contents || '').trim();
   const resolvedLocation = String(location || '').trim();
-  const resolvedGps = normalizeGpsCoordinate_(gpsCoordinate);
-  const photo = savePhotoAttachment_(photoDataUrl);
+  const resolvedTag = normalizeTag_(normalized.tag);
+  const resolvedGps = normalizeGpsCoordinate_(normalized.gpsCoordinate);
+  const photo = savePhotoAttachment_(normalized.photoDataUrl);
 
   if (!text) {
     throw new Error('Entry text is required.');
@@ -213,15 +216,16 @@ function addEntry(contents, customDate, location, gpsCoordinate, photoDataUrl, c
   const dateValue = parseDateInput_(customDate) || startOfDay_(new Date());
   const timestamp = new Date();
   const place = resolvedLocation || reverseGeocodeLocation_(resolvedGps);
-  const row = [timestamp, text, place, dateValue, '', resolvedGps];
+  const row = [timestamp, text, place, dateValue, '', resolvedGps, '', resolvedTag];
 
   sheet.appendRow(row);
   if (photo.url) {
     sheet.getRange(sheet.getLastRow(), PHOTO_COLUMN_INDEX).setFormula(buildPhotoImageFormula_(photo.url));
   }
+  sheet.getRange(sheet.getLastRow(), TAG_COLUMN_INDEX).setValue(resolvedTag);
   invalidateAppDataCache_();
-  syncDustMeta_(clientMeta);
-  return buildEntrySnapshot_(sheet.getLastRow(), timestamp, text, place, dateValue, null, resolvedGps, photo.url);
+  syncDustMeta_(normalized.clientMeta);
+  return buildEntrySnapshot_(sheet.getLastRow(), timestamp, text, place, dateValue, null, resolvedGps, photo.url, resolvedTag);
 }
 
 function reverseGeocodeLocation_(gpsCoordinate) {
@@ -277,9 +281,10 @@ function resolveLocationDetailsFromGeocoder_(latitude, longitude) {
   }
 }
 
-function updateEntry(rowNumber, contents, customDate, location, gpsCoordinate, photoDataUrl, clientMeta) {
+function updateEntry(rowNumber, contents, customDate, location, tagOrGpsCoordinate, gpsCoordinateOrPhotoDataUrl, photoDataUrlOrClientMeta, clientMeta) {
   const sheet = getOrCreateSheet_(JOURNAL_SHEET_NAME);
   ensureJournalHeader_(sheet);
+  const normalized = normalizeEntryArgs_(arguments);
 
   const row = Number(rowNumber);
   if (!Number.isInteger(row) || row < 2 || row > sheet.getLastRow()) {
@@ -288,14 +293,15 @@ function updateEntry(rowNumber, contents, customDate, location, gpsCoordinate, p
 
   const text = String(contents || '').trim();
   const resolvedLocation = String(location || '').trim();
-  const resolvedGps = normalizeGpsCoordinate_(gpsCoordinate);
-  const photo = savePhotoAttachment_(photoDataUrl);
+  const resolvedTag = normalizeTag_(normalized.tag);
+  const resolvedGps = normalizeGpsCoordinate_(normalized.gpsCoordinate);
+  const photo = savePhotoAttachment_(normalized.photoDataUrl);
   if (!text) {
     throw new Error('Entry text is required.');
   }
 
-  const current = sheet.getRange(row, 1, 1, PHOTO_COLUMN_INDEX).getValues()[0];
-  const currentFormulas = sheet.getRange(row, 1, 1, PHOTO_COLUMN_INDEX).getFormulas()[0];
+  const current = sheet.getRange(row, 1, 1, TAG_COLUMN_INDEX).getValues()[0];
+  const currentFormulas = sheet.getRange(row, 1, 1, TAG_COLUMN_INDEX).getFormulas()[0];
   const timestamp = coerceDate_(current[0]) || new Date();
   const dateValue = parseDateInput_(customDate) || coerceDate_(current[3]) || startOfDay_(new Date());
   const modified = new Date();
@@ -307,10 +313,11 @@ function updateEntry(rowNumber, contents, customDate, location, gpsCoordinate, p
   if (photo.url) {
     sheet.getRange(row, PHOTO_COLUMN_INDEX).setFormula(buildPhotoImageFormula_(photo.url));
   }
+  sheet.getRange(row, TAG_COLUMN_INDEX).setValue(resolvedTag);
   const storedPhotoUrl = photo.url || extractPhotoUrlFromCell_(current[6], currentFormulas[6]);
   invalidateAppDataCache_();
-  syncDustMeta_(clientMeta);
-  return buildEntrySnapshot_(row, timestamp, text, place, dateValue, modified, gps, storedPhotoUrl);
+  syncDustMeta_(normalized.clientMeta);
+  return buildEntrySnapshot_(row, timestamp, text, place, dateValue, modified, gps, storedPhotoUrl, resolvedTag);
 }
 
 function addSpecialDate(labelOrDate, ruleTypeOrLabel, dateValue, ruleValue, clientMeta) {
@@ -363,7 +370,7 @@ function getUserInfo() {
   }
 }
 
-function buildEntrySnapshot_(rowNumber, timestamp, content, location, entryDate, modified, gpsCoordinate, photoUrl) {
+function buildEntrySnapshot_(rowNumber, timestamp, content, location, entryDate, modified, gpsCoordinate, photoUrl, tag) {
   const tz = Session.getScriptTimeZone();
   const date = entryDate ? startOfDay_(entryDate) : null;
   const stamp = timestamp ? new Date(timestamp) : null;
@@ -380,6 +387,7 @@ function buildEntrySnapshot_(rowNumber, timestamp, content, location, entryDate,
     location: String(location || ''),
     gpsCoordinate: normalizeGpsCoordinate_(gpsCoordinate),
     photoUrl: String(photoUrl || ''),
+    tag: normalizeTag_(tag),
     modified: change ? change.toISOString() : '',
     modifiedDisplay: change ? formatDisplayDate_(change, tz) : '',
     labels: [],
@@ -440,6 +448,7 @@ function getParsedEntries_(tz) {
     const modified = coerceDate_(row[4]);
     const gpsCoordinate = normalizeGpsCoordinate_(row[5]);
     const photoUrl = extractPhotoUrlFromCell_(row[6], formulas[item.rowNumber - 1] ? formulas[item.rowNumber - 1][6] : '');
+    const tag = normalizeTag_(row[7]);
     const viewKey = entryDate ? getViewKeyNumber_(entryDate, tz) : null;
     const viewKeyText = entryDate ? getViewKeyText_(entryDate, tz) : '';
 
@@ -454,6 +463,7 @@ function getParsedEntries_(tz) {
       location: location,
       gpsCoordinate: gpsCoordinate,
       photoUrl: photoUrl,
+      tag: tag,
       modified: modified ? modified.toISOString() : '',
       modifiedDisplay: modified ? formatDisplayDate_(modified, tz) : '',
       labels: [],
@@ -1267,6 +1277,46 @@ function uniqueStrings_(items) {
   });
 }
 
+function normalizeEntryArgs_(argsLike) {
+  const args = Array.prototype.slice.call(argsLike || []);
+  if (args.length >= 7) {
+    return {
+      tag: args[3],
+      gpsCoordinate: args[4],
+      photoDataUrl: args[5],
+      clientMeta: args[6],
+    };
+  }
+
+  if (looksLikeGpsCoordinate_(args[3]) || (looksLikePhotoDataUrl_(args[4]) && typeof args[5] === 'object' && args[5] !== null)) {
+    return {
+      tag: '',
+      gpsCoordinate: args[3],
+      photoDataUrl: args[4],
+      clientMeta: args[5],
+    };
+  }
+
+  return {
+    tag: args[3],
+    gpsCoordinate: args[4],
+    photoDataUrl: args[5],
+    clientMeta: args[6],
+  };
+}
+
+function normalizeTag_(value) {
+  return String(value || '').trim();
+}
+
+function looksLikeGpsCoordinate_(value) {
+  return !!parseGpsCoordinate_(value);
+}
+
+function looksLikePhotoDataUrl_(value) {
+  return /^data:image\//i.test(String(value || '').trim());
+}
+
 function getSheetOrThrow_(name) {
   const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(name);
   if (!sheet) {
@@ -1323,7 +1373,8 @@ function getAppDataCacheKey_(referenceDate, tz, clientMeta) {
 
 function getAppDataCacheVersion_() {
   const props = PropertiesService.getScriptProperties();
-  return String(props.getProperty('APP_DATA_CACHE_VERSION') || '0');
+  const cacheVersion = String(props.getProperty('APP_DATA_CACHE_VERSION') || '0');
+  return [CODE_VERSION, cacheVersion].join('|');
 }
 
 function invalidateAppDataCache_() {
@@ -1391,7 +1442,7 @@ function ensureJournalHeader_(sheet) {
     return;
   }
 
-  if (sheet.getLastColumn() < header.length || String(current[5] || '').trim() !== 'GPSCoordinate' || String(current[6] || '').trim() !== 'Photo') {
+  if (sheet.getLastColumn() < header.length || String(current[5] || '').trim() !== 'GPSCoordinate' || String(current[6] || '').trim() !== 'Photo' || String(current[7] || '').trim() !== 'Tag') {
     sheet.getRange(1, 1, 1, header.length).setValues([header]);
   }
 }

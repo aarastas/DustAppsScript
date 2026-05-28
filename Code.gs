@@ -12,8 +12,8 @@ const PHOTO_FOLDER_NAME = 'Dust Photos';
 const JOURNAL_HEADER = ['Timestamp', 'Content', 'Location', 'Date', 'Modified', 'GPSCoordinate', 'Photo', 'Tag'];
 const PHOTO_COLUMN_INDEX = 7;
 const TAG_COLUMN_INDEX = 8;
-const CODE_VERSION = '1.26'; // Version 1.26: Added persistent entry tags and kept existing date-based views intact.
-const CODE_CHANGELOG = 'v1.26 | Code.gs | Added persistent entry tags and kept existing date-based views intact.';
+const CODE_VERSION = '1.28'; // Version 1.28: Added special-date row editing and deletion from the settings dropdown.
+const CODE_CHANGELOG = 'v1.28 | Code.gs | Added special-date row editing and deletion from the settings dropdown.';
 const PARSED_JOURNAL_CACHE_PREFIX = 'parsed-journal';
 const PARSED_SPECIAL_DATES_CACHE_PREFIX = 'parsed-special-dates';
 const PARSED_DATA_CACHE_TTL_SECONDS = 300;
@@ -326,6 +326,49 @@ function addSpecialDate(labelOrDate, ruleTypeOrLabel, dateValue, ruleValue, clie
 
   const text = String(labelOrDate || '').trim();
   const ruleType = String(ruleTypeOrLabel || '').trim().toLowerCase();
+  const row = buildSpecialDateRow_(text, ruleType, dateValue, ruleValue);
+  sheet.appendRow(row);
+  invalidateAppDataCache_();
+  syncDustMeta_(clientMeta);
+  return true;
+}
+
+function updateSpecialDate(rowNumber, labelOrDate, ruleTypeOrLabel, dateValue, ruleValue, clientMeta) {
+  const sheet = getOrCreateSpecialDatesSheet_(true);
+  ensureSpecialDatesHeader_(sheet);
+
+  const row = Number(rowNumber);
+  if (!Number.isInteger(row) || row < 2 || row > sheet.getLastRow()) {
+    throw new Error('Invalid special date row.');
+  }
+
+  const text = String(labelOrDate || '').trim();
+  const ruleType = String(ruleTypeOrLabel || '').trim().toLowerCase();
+  const values = buildSpecialDateRow_(text, ruleType, dateValue, ruleValue);
+  sheet.getRange(row, 1, 1, SPECIAL_DATE_HEADER.length).setValues([values]);
+  invalidateAppDataCache_();
+  syncDustMeta_(clientMeta);
+  return true;
+}
+
+function deleteSpecialDate(rowNumber, clientMeta) {
+  const sheet = getOrCreateSpecialDatesSheet_(true);
+  ensureSpecialDatesHeader_(sheet);
+
+  const row = Number(rowNumber);
+  if (!Number.isInteger(row) || row < 2 || row > sheet.getLastRow()) {
+    throw new Error('Invalid special date row.');
+  }
+
+  sheet.deleteRow(row);
+  invalidateAppDataCache_();
+  syncDustMeta_(clientMeta);
+  return true;
+}
+
+function buildSpecialDateRow_(labelOrDate, ruleTypeOrLabel, dateValue, ruleValue) {
+  const text = String(labelOrDate || '').trim();
+  const ruleType = String(ruleTypeOrLabel || '').trim().toLowerCase();
   const date = parseDateInput_(dateValue);
   const value = String(ruleValue || '').trim();
 
@@ -338,20 +381,92 @@ function addSpecialDate(labelOrDate, ruleTypeOrLabel, dateValue, ruleValue, clie
       throw new Error('A valid date is required.');
     }
     const tz = Session.getScriptTimeZone();
-    sheet.appendRow(['Holiday', text, true, 'fixed-month-day', Utilities.formatDate(date, tz, 'M/d'), true]);
-    invalidateAppDataCache_();
-    syncDustMeta_(clientMeta);
-    return true;
+    return ['Holiday', text, true, 'fixed-month-day', Utilities.formatDate(date, tz, 'M/d'), true];
   }
 
   if (!ruleType) {
     throw new Error('A rule type is required.');
   }
 
-  sheet.appendRow(['Holiday', text, true, ruleType, value, true]);
-  invalidateAppDataCache_();
-  syncDustMeta_(clientMeta);
-  return true;
+  return ['Holiday', text, true, ruleType, value, true];
+}
+
+function renameJournalTag(oldTag, newTag, clientMeta) {
+  return updateJournalTags_(oldTag, newTag, clientMeta);
+}
+
+function deleteJournalTag(tag, clientMeta) {
+  return updateJournalTags_(tag, '', clientMeta);
+}
+
+function updateJournalTags_(oldTag, newTag, clientMeta) {
+  const fromTag = normalizeSingleTag_(oldTag);
+  const toTag = normalizeSingleTag_(newTag);
+  if (!fromTag) {
+    throw new Error('Select a tag to change.');
+  }
+  if (toTag && fromTag.toLowerCase() === toTag.toLowerCase()) {
+    return { updatedRows: 0, tag: toTag };
+  }
+
+  const sheet = getOrCreateSheet_(JOURNAL_SHEET_NAME);
+  ensureJournalHeader_(sheet);
+  const lastRow = sheet.getLastRow();
+  if (lastRow < 2) {
+    return { updatedRows: 0, tag: toTag };
+  }
+
+  const range = sheet.getRange(2, TAG_COLUMN_INDEX, lastRow - 1, 1);
+  const values = range.getValues();
+  let updatedRows = 0;
+  const fromKey = fromTag.toLowerCase();
+  const toValue = toTag ? normalizeSingleTag_(toTag) : '';
+
+  values.forEach((row, index) => {
+    const tags = parseTagList_(row[0]);
+    if (!tags.length) {
+      return;
+    }
+
+    const updated = [];
+    const seen = {};
+    let changed = false;
+    tags.forEach(tag => {
+      const key = tag.toLowerCase();
+      if (key === fromKey) {
+        changed = true;
+        if (!toValue) {
+          return;
+        }
+        const replacementKey = toValue.toLowerCase();
+        if (seen[replacementKey]) {
+          return;
+        }
+        seen[replacementKey] = true;
+        updated.push(toValue);
+        return;
+      }
+      if (seen[key]) {
+        changed = true;
+        return;
+      }
+      seen[key] = true;
+      updated.push(tag);
+    });
+
+    if (changed) {
+      values[index][0] = updated.join(', ');
+      updatedRows += 1;
+    }
+  });
+
+  if (updatedRows > 0) {
+    range.setValues(values);
+    invalidateAppDataCache_();
+    syncDustMeta_(clientMeta);
+  }
+
+  return { updatedRows: updatedRows, tag: toValue };
 }
 
 function getUserInfo() {
@@ -388,6 +503,7 @@ function buildEntrySnapshot_(rowNumber, timestamp, content, location, entryDate,
     gpsCoordinate: normalizeGpsCoordinate_(gpsCoordinate),
     photoUrl: String(photoUrl || ''),
     tag: normalizeTag_(tag),
+    tags: parseTagList_(tag),
     modified: change ? change.toISOString() : '',
     modifiedDisplay: change ? formatDisplayDate_(change, tz) : '',
     labels: [],
@@ -464,6 +580,7 @@ function getParsedEntries_(tz) {
       gpsCoordinate: gpsCoordinate,
       photoUrl: photoUrl,
       tag: tag,
+      tags: parseTagList_(tag),
       modified: modified ? modified.toISOString() : '',
       modifiedDisplay: modified ? formatDisplayDate_(modified, tz) : '',
       labels: [],
@@ -667,7 +784,7 @@ function getSpecialDates_() {
 
   const seen = {};
   const parsed = rows
-    .map(parseSpecialDateRow_)
+    .map((row, index) => parseSpecialDateRow_(row, index + 2))
     .filter(Boolean)
     .filter(item => {
       const key = specialDateKey_(item);
@@ -919,7 +1036,7 @@ function monthDayKey_(date, tz) {
   return Utilities.formatDate(date, tz || Session.getScriptTimeZone(), 'MM-dd');
 }
 
-function parseSpecialDateRow_(row) {
+function parseSpecialDateRow_(row, rowNumber) {
   if (!row || !row.length) {
     return null;
   }
@@ -937,6 +1054,7 @@ function parseSpecialDateRow_(row) {
     }
     const rawRuleValue = String(fifth ?? '').trim();
     const item = {
+      rowNumber: Number(rowNumber) || null,
       type: first || 'Personal',
       label: second,
       repeatAnnually: toBoolean_(third),
@@ -1279,6 +1397,15 @@ function uniqueStrings_(items) {
 
 function normalizeEntryArgs_(argsLike) {
   const args = Array.prototype.slice.call(argsLike || []);
+  if (isRowNumber_(args[0])) {
+    return {
+      tag: args.length >= 8 ? args[4] : '',
+      gpsCoordinate: args.length >= 8 ? args[5] : args[4],
+      photoDataUrl: args.length >= 8 ? args[6] : args[5],
+      clientMeta: args.length >= 8 ? args[7] : args[6],
+    };
+  }
+
   if (args.length >= 7) {
     return {
       tag: args[3],
@@ -1306,7 +1433,12 @@ function normalizeEntryArgs_(argsLike) {
 }
 
 function normalizeTag_(value) {
-  return String(value || '').trim();
+  return parseTagList_(value).join(', ');
+}
+
+function normalizeSingleTag_(value) {
+  const tags = parseTagList_(value);
+  return tags.length ? tags[0] : '';
 }
 
 function looksLikeGpsCoordinate_(value) {
@@ -1315,6 +1447,29 @@ function looksLikeGpsCoordinate_(value) {
 
 function looksLikePhotoDataUrl_(value) {
   return /^data:image\//i.test(String(value || '').trim());
+}
+
+function isRowNumber_(value) {
+  return Number.isInteger(Number(value)) && Number(value) >= 2;
+}
+
+function parseTagList_(value) {
+  const seen = {};
+  const tags = [];
+  const raw = Array.isArray(value) ? value.join(',') : String(value || '');
+  raw.split(',').forEach(part => {
+    const tag = String(part || '').trim();
+    if (!tag) {
+      return;
+    }
+    const key = tag.toLowerCase();
+    if (seen[key]) {
+      return;
+    }
+    seen[key] = true;
+    tags.push(tag);
+  });
+  return tags;
 }
 
 function getSheetOrThrow_(name) {

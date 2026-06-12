@@ -3,6 +3,7 @@
   <head>
     <base target="_top">
     <!-- Version policy: bump the Index.html version comment here and the matching INDEX_VERSION constant in this file whenever this file changes. -->
+    <!-- Version 1.96: Unified searchable tag/location filter combobox; tag and location chips are clickable to filter. -->
     <!-- Version 1.95: Arcade storage falls back to in-memory when localStorage is unavailable so best score and game selection persist within a session. -->
     <!-- Version 1.94: Scale PAC-MAN canvas and wall styling closer to the reference screenshot. -->
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
@@ -733,6 +734,114 @@
         background: rgba(141, 90, 43, 0.10);
         color: var(--accent-strong);
       }
+      /* Clickable filter chips (tag + location) rendered as buttons. */
+      button.chip {
+        border: 0;
+        cursor: pointer;
+        font: inherit;
+        box-shadow: none;
+        transition: filter 0.12s ease, transform 0.12s ease;
+      }
+      button.chip.tag-chip,
+      button.chip.location-chip {
+        min-height: 30px;
+        padding: 5px 10px;
+        font-size: 0.78rem;
+      }
+      button.chip:hover {
+        filter: brightness(0.96);
+      }
+      button.chip:active {
+        transform: translateY(1px);
+      }
+      button.chip:focus-visible {
+        outline: 2px solid rgba(141, 90, 43, 0.55);
+        outline-offset: 1px;
+      }
+      /* Unified searchable filter combobox (tags + locations). */
+      .filter-combo-field { position: relative; }
+      .filter-combo { position: relative; }
+      .filter-combo-input { width: 100%; padding-right: 36px; }
+      .filter-combo-clear {
+        position: absolute;
+        top: 50%;
+        right: 8px;
+        transform: translateY(-50%);
+        width: 28px;
+        min-width: 28px;
+        height: 28px;
+        min-height: 28px;
+        padding: 0;
+        border-radius: 999px;
+        background: rgba(141, 90, 43, 0.12);
+        color: var(--accent-strong);
+        box-shadow: none;
+        font-size: 1.1rem;
+        line-height: 1;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .filter-combo-clear.hidden { display: none; }
+      .filter-combo-listbox {
+        position: absolute;
+        z-index: 40;
+        top: calc(100% + 4px);
+        left: 0;
+        right: 0;
+        margin: 0;
+        padding: 6px;
+        list-style: none;
+        max-height: 280px;
+        overflow-y: auto;
+        border-radius: 16px;
+        border: 1px solid rgba(74, 57, 36, 0.18);
+        background: rgba(255, 255, 255, 0.98);
+        box-shadow: var(--shadow);
+        backdrop-filter: blur(10px);
+      }
+      .filter-combo-listbox.hidden { display: none; }
+      .filter-option {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 9px 10px;
+        border-radius: 12px;
+        cursor: pointer;
+        color: var(--text);
+        font-size: 0.95rem;
+      }
+      .filter-option:hover,
+      .filter-option.is-active {
+        background: rgba(141, 90, 43, 0.12);
+      }
+      .filter-option[aria-selected="true"] {
+        font-weight: 700;
+      }
+      .filter-option-badge {
+        flex: 0 0 auto;
+        min-width: 64px;
+        text-align: center;
+        padding: 3px 8px;
+        border-radius: 999px;
+        font-size: 0.66rem;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+      .filter-option-badge.is-tag {
+        background: rgba(141, 90, 43, 0.12);
+        color: var(--accent-strong);
+      }
+      .filter-option-badge.is-location {
+        background: rgba(111, 128, 108, 0.18);
+        color: #4f6250;
+      }
+      .filter-option-label { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .filter-option-empty {
+        padding: 10px;
+        color: var(--muted);
+        font-size: 0.92rem;
+      }
       details > summary.panel-head {
         display: flex;
         align-items: baseline;
@@ -1015,11 +1124,22 @@
                   <label class="visually-hidden" for="previewDate">Preview date</label>
                   <input type="date" id="previewDate" aria-label="Preview date">
                 </div>
-                <div class="tag-filter-field">
-                  <label for="tagFilter">Tag</label>
-                  <select id="tagFilter" name="tagFilter">
-                    <option value="">All tags</option>
-                  </select>
+                <div class="filter-combo-field">
+                  <label for="filterInput">Filter</label>
+                  <div class="filter-combo" id="filterCombo">
+                    <input
+                      type="text"
+                      id="filterInput"
+                      class="filter-combo-input"
+                      autocomplete="off"
+                      role="combobox"
+                      aria-expanded="false"
+                      aria-controls="filterListbox"
+                      aria-autocomplete="list"
+                      placeholder="Filter by tag or location">
+                    <button type="button" id="filterClearBtn" class="filter-combo-clear hidden" aria-label="Clear filter">&times;</button>
+                    <ul id="filterListbox" class="filter-combo-listbox hidden" role="listbox" aria-label="Tags and locations"></ul>
+                  </div>
                 </div>
                 <div class="view-info" id="viewInfo" aria-live="polite"></div>
               </div>
@@ -1244,7 +1364,7 @@
       <footer class="dust-footer">
         <div class="version-stack">
       <strong>Code.gs <span id="codeVersionLabel">1.41</span></strong>
-      <strong>Index.html <span id="indexVersionLabel">1.95</span></strong>
+      <strong>Index.html <span id="indexVersionLabel">1.96</span></strong>
         </div>
       </footer>
     </main>
@@ -1297,7 +1417,9 @@
         entries: [],
         allEntries: [],
         specialDates: [],
-        tagFilter: '',
+        filter: { type: '', value: '' },
+        filterOptions: [],
+        filterHighlight: -1,
         selectedSpecialDateRow: '',
         user: null,
         today: '',
@@ -1308,8 +1430,8 @@
         renderToken: 0,
       };
 
-      const INDEX_VERSION = '1.95';
-      const INDEX_CHANGELOG = 'v1.95 | Index.html | Arcade storage falls back to in-memory when localStorage is unavailable so best score and game selection persist within a session.';
+      const INDEX_VERSION = '1.96';
+      const INDEX_CHANGELOG = 'v1.96 | Index.html | Unified searchable tag/location filter combobox; tag and location chips are clickable to filter.';
       const TETRIS_BEST_SCORE_KEY = 'dust-tetris-best-score';
       const TETRIS_BOARD_COLS = 10;
       const TETRIS_BOARD_ROWS = 20;
@@ -1577,7 +1699,10 @@
         entryPhoto: document.getElementById('entryPhoto'),
         locationHint: document.getElementById('locationHint'),
         previewDate: document.getElementById('previewDate'),
-        tagFilter: document.getElementById('tagFilter'),
+        filterCombo: document.getElementById('filterCombo'),
+        filterInput: document.getElementById('filterInput'),
+        filterClearBtn: document.getElementById('filterClearBtn'),
+        filterListbox: document.getElementById('filterListbox'),
         contents: document.getElementById('contents'),
         specialDateDisplayMode: document.getElementById('specialDateDisplayMode'),
         userDisplayMode: document.getElementById('userDisplayMode'),
@@ -4308,36 +4433,155 @@
       }
 
       function renderTagControls() {
-        renderTagFilterOptions();
         renderEntryTagOptions();
         renderTagManagementOptions();
-        if (els.tagFilter) {
-          els.tagFilter.value = state.tagFilter || '';
+        syncFilterInputDisplay();
+      }
+
+      // Unique locations across all entries, sorted case-insensitively.
+      function getUniqueLocations(entries) {
+        const seen = {};
+        const locations = [];
+        (Array.isArray(entries) ? entries : []).forEach(entry => {
+          const location = String(entry && entry.location ? entry.location : '').trim();
+          if (!location) return;
+          const key = location.toLowerCase();
+          if (seen[key]) return;
+          seen[key] = location;
+          locations.push(location);
+        });
+        return locations.sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
+      }
+
+      // Whether a tag/location filter is currently applied.
+      function filterActive() {
+        return !!(state.filter && state.filter.type && state.filter.value);
+      }
+
+      // Human-readable label for the active filter, e.g. "Tag: Camping".
+      function activeFilterLabel() {
+        if (!filterActive()) return '';
+        const prefix = state.filter.type === 'location' ? 'Location' : 'Tag';
+        return `${prefix}: ${state.filter.value}`;
+      }
+
+      // Build the combined option list (tags + locations) matching a query.
+      function buildFilterOptions(query) {
+        const needle = String(query || '').trim().toLowerCase();
+        const options = [];
+        getUniqueTags(state.allEntries).forEach(tag => {
+          if (!needle || tag.toLowerCase().includes(needle)) {
+            options.push({ type: 'tag', value: tag });
+          }
+        });
+        getUniqueLocations(state.allEntries).forEach(location => {
+          if (!needle || location.toLowerCase().includes(needle)) {
+            options.push({ type: 'location', value: location });
+          }
+        });
+        return options;
+      }
+
+      // Keep the text input and clear button in sync with the active filter.
+      function syncFilterInputDisplay() {
+        if (els.filterInput && document.activeElement !== els.filterInput) {
+          els.filterInput.value = filterActive() ? state.filter.value : '';
+        }
+        if (els.filterClearBtn) {
+          els.filterClearBtn.classList.toggle('hidden', !filterActive());
         }
       }
 
-      function renderTagFilterOptions() {
-        if (!els.tagFilter) return;
-        const selected = normalizeTagValue(state.tagFilter);
-        const tags = getUniqueTags(state.allEntries);
-        const fragment = document.createDocumentFragment();
-        const allOption = document.createElement('option');
-        allOption.value = '';
-        allOption.textContent = 'All tags';
-        fragment.appendChild(allOption);
-        tags.forEach(tag => {
-          const option = document.createElement('option');
-          option.value = tag;
-          option.textContent = tag;
-          fragment.appendChild(option);
-        });
-        if (selected && !tags.some(tag => tag.toLowerCase() === selected.toLowerCase())) {
-          const option = document.createElement('option');
-          option.value = selected;
-          option.textContent = selected;
-          fragment.appendChild(option);
+      // Apply a tag or location filter and refresh the feed.
+      function setActiveFilter(type, value) {
+        const cleanType = type === 'location' ? 'location' : 'tag';
+        const cleanValue = normalizeTagValue(value);
+        if (!cleanValue) {
+          clearActiveFilter();
+          return;
         }
-        els.tagFilter.replaceChildren(fragment);
+        state.filter = { type: cleanType, value: cleanValue };
+        closeFilterListbox();
+        if (els.filterInput) {
+          els.filterInput.value = cleanValue;
+          els.filterInput.blur();
+        }
+        syncFilterInputDisplay();
+        renderEntries();
+        setStatus('');
+      }
+
+      // Remove any active filter and return to the on-this-day view.
+      function clearActiveFilter() {
+        state.filter = { type: '', value: '' };
+        closeFilterListbox();
+        if (els.filterInput) {
+          els.filterInput.value = '';
+        }
+        syncFilterInputDisplay();
+        renderEntries();
+        setStatus('');
+      }
+
+      function openFilterListbox(query) {
+        if (!els.filterListbox) return;
+        renderFilterListbox(query);
+        els.filterListbox.classList.remove('hidden');
+        if (els.filterInput) {
+          els.filterInput.setAttribute('aria-expanded', 'true');
+        }
+      }
+
+      function closeFilterListbox() {
+        if (!els.filterListbox) return;
+        els.filterListbox.classList.add('hidden');
+        state.filterHighlight = -1;
+        if (els.filterInput) {
+          els.filterInput.setAttribute('aria-expanded', 'false');
+        }
+      }
+
+      // Populate the popup listbox with tag/location options for the query.
+      function renderFilterListbox(query) {
+        if (!els.filterListbox) return;
+        const options = buildFilterOptions(query);
+        state.filterOptions = options;
+        if (state.filterHighlight >= options.length) {
+          state.filterHighlight = options.length - 1;
+        }
+        const fragment = document.createDocumentFragment();
+        if (!options.length) {
+          const empty = document.createElement('li');
+          empty.className = 'filter-option-empty';
+          empty.textContent = 'No matching tags or locations.';
+          fragment.appendChild(empty);
+        } else {
+          options.forEach((option, index) => {
+            const li = document.createElement('li');
+            li.className = 'filter-option';
+            li.setAttribute('role', 'option');
+            li.dataset.index = String(index);
+            li.dataset.type = option.type;
+            li.dataset.value = option.value;
+            const isSelected = filterActive()
+              && state.filter.type === option.type
+              && state.filter.value.toLowerCase() === option.value.toLowerCase();
+            li.setAttribute('aria-selected', isSelected ? 'true' : 'false');
+            if (index === state.filterHighlight) {
+              li.classList.add('is-active');
+            }
+            const badge = document.createElement('span');
+            badge.className = 'filter-option-badge ' + (option.type === 'location' ? 'is-location' : 'is-tag');
+            badge.textContent = option.type === 'location' ? 'Location' : 'Tag';
+            const label = document.createElement('span');
+            label.className = 'filter-option-label';
+            label.textContent = option.value;
+            li.appendChild(badge);
+            li.appendChild(label);
+            fragment.appendChild(li);
+          });
+        }
+        els.filterListbox.replaceChildren(fragment);
       }
 
       function renderEntryTagOptions() {
@@ -5212,11 +5456,17 @@
 
       function renderEntries() {
         const query = els.search ? (els.search.value || '').trim().toLowerCase() : '';
-        const activeTag = normalizeTagValue(state.tagFilter);
-        const tagContext = !!activeTag;
-        const specialContext = !tagContext && Array.isArray(state.view && state.view.labels) && state.view.labels.length > 0;
-        let entries = (tagContext
-          ? state.allEntries.filter(entry => getEntryTags(entry).some(tag => tag.toLowerCase() === activeTag.toLowerCase()))
+        const isFiltering = filterActive();
+        const filterType = isFiltering ? state.filter.type : '';
+        const filterValue = isFiltering ? state.filter.value.toLowerCase() : '';
+        const specialContext = !isFiltering && Array.isArray(state.view && state.view.labels) && state.view.labels.length > 0;
+        let entries = (isFiltering
+          ? state.allEntries.filter(entry => {
+              if (filterType === 'location') {
+                return String(entry.location || '').trim().toLowerCase() === filterValue;
+              }
+              return getEntryTags(entry).some(tag => tag.toLowerCase() === filterValue);
+            })
           : state.entries)
           .filter(entry => {
             if (!query) return true;
@@ -5251,13 +5501,13 @@
         const renderToken = ++state.renderToken;
         els.entries.replaceChildren();
         els.entryCount.textContent = `${entries.length} ${entries.length === 1 ? 'entry' : 'entries'}`;
-        els.viewInfo.textContent = state.view
-          ? (tagContext
-            ? `Tag: ${activeTag}`
-            : (state.view.mode === 'special'
+        els.viewInfo.textContent = isFiltering
+          ? activeFilterLabel()
+          : (state.view
+            ? (state.view.mode === 'special'
               ? (state.view.title || '')
-              : (state.view.reason || '')))
-          : '';
+              : (state.view.reason || ''))
+            : '');
         if (!entries.length) {
           const empty = document.createElement('div');
           empty.className = 'entry-card muted';
@@ -5343,15 +5593,23 @@
             chips.appendChild(chip);
           });
           getEntryTags(entry).forEach(tag => {
-            const chip = document.createElement('span');
+            const chip = document.createElement('button');
+            chip.type = 'button';
             chip.className = 'chip tag-chip';
             chip.textContent = tag;
+            chip.title = `Filter by tag: ${tag}`;
+            chip.setAttribute('aria-label', `Filter by tag: ${tag}`);
+            chip.addEventListener('click', () => setActiveFilter('tag', tag));
             chips.appendChild(chip);
           });
           if (entry.location) {
-            const chip = document.createElement('span');
+            const chip = document.createElement('button');
+            chip.type = 'button';
             chip.className = 'chip location-chip';
             chip.textContent = entry.location;
+            chip.title = `Filter by location: ${entry.location}`;
+            chip.setAttribute('aria-label', `Filter by location: ${entry.location}`);
+            chip.addEventListener('click', () => setActiveFilter('location', entry.location));
             chips.appendChild(chip);
           }
           if (entry.photoUrl) {
@@ -5453,7 +5711,7 @@
         }
         const saveBtn = form.querySelector('button[type="submit"]');
         const gpsInput = form.querySelector('input[type="hidden"][name="gpsCoordinate"]');
-        const tagFilterActive = !!normalizeTagValue(state.tagFilter);
+        const tagFilterActive = filterActive();
         setLoading(saveBtn, true, 'Save changes');
         setStatus('Saving entry...');
         google.script.run
@@ -5519,7 +5777,7 @@
         };
         state.allEntries = updateList(state.allEntries);
         renderTagControls();
-        if (normalizeTagValue(state.tagFilter)) {
+        if (filterActive()) {
           renderEntries();
           return;
         }
@@ -5568,7 +5826,7 @@
           }
           setLoading(els.saveEntryBtn, true, 'Save entry');
           setStatus('Saving entry...');
-          const tagFilterActive = !!normalizeTagValue(state.tagFilter);
+          const tagFilterActive = filterActive();
           google.script.run
             .withSuccessHandler(entry => {
               els.contents.value = '';
@@ -5605,10 +5863,53 @@
         setStatus('');
       }
 
-      function changeTagFilter() {
-        state.tagFilter = normalizeTagValue(els.tagFilter ? els.tagFilter.value : '');
-        renderEntries();
-        setStatus('');
+      // Combobox: typing narrows the popup and keeps the list open.
+      function handleFilterInput() {
+        const query = els.filterInput ? els.filterInput.value : '';
+        state.filterHighlight = -1;
+        openFilterListbox(query);
+        if (els.filterClearBtn) {
+          els.filterClearBtn.classList.toggle('hidden', !(filterActive() || (query && query.trim())));
+        }
+      }
+
+      // Combobox keyboard navigation: arrows move, Enter selects, Esc closes.
+      function handleFilterKeydown(event) {
+        const key = event.key;
+        const listVisible = els.filterListbox && !els.filterListbox.classList.contains('hidden');
+        if (key === 'ArrowDown' || key === 'ArrowUp') {
+          event.preventDefault();
+          if (!listVisible) {
+            openFilterListbox(els.filterInput ? els.filterInput.value : '');
+          }
+          const count = (state.filterOptions || []).length;
+          if (!count) return;
+          if (key === 'ArrowDown') {
+            state.filterHighlight = (state.filterHighlight + 1) % count;
+          } else {
+            state.filterHighlight = state.filterHighlight <= 0 ? count - 1 : state.filterHighlight - 1;
+          }
+          renderFilterListbox(els.filterInput ? els.filterInput.value : '');
+          return;
+        }
+        if (key === 'Enter') {
+          const options = state.filterOptions || [];
+          if (listVisible && state.filterHighlight >= 0 && state.filterHighlight < options.length) {
+            event.preventDefault();
+            const chosen = options[state.filterHighlight];
+            setActiveFilter(chosen.type, chosen.value);
+          } else if (options.length === 1) {
+            event.preventDefault();
+            setActiveFilter(options[0].type, options[0].value);
+          }
+          return;
+        }
+        if (key === 'Escape') {
+          if (listVisible) {
+            event.preventDefault();
+            closeFilterListbox();
+          }
+        }
       }
 
       function renameSelectedTag() {
@@ -5631,11 +5932,9 @@
         setLoading(els.deleteTagBtn, true, 'Delete tag');
         google.script.run
           .withSuccessHandler(result => {
-            if (normalizeTagValue(state.tagFilter).toLowerCase() === fromTag.toLowerCase()) {
-              state.tagFilter = toTag;
-              if (els.tagFilter) {
-                els.tagFilter.value = toTag;
-              }
+            if (filterActive() && state.filter.type === 'tag'
+              && state.filter.value.toLowerCase() === fromTag.toLowerCase()) {
+              state.filter = { type: 'tag', value: toTag };
             }
             if (els.tagManageTo) els.tagManageTo.value = '';
             if (els.tagManageFrom) els.tagManageFrom.value = toTag;
@@ -5662,11 +5961,9 @@
         setLoading(els.deleteTagBtn, true, 'Delete tag');
         google.script.run
           .withSuccessHandler(result => {
-            if (normalizeTagValue(state.tagFilter).toLowerCase() === fromTag.toLowerCase()) {
-              state.tagFilter = '';
-              if (els.tagFilter) {
-                els.tagFilter.value = '';
-              }
+            if (filterActive() && state.filter.type === 'tag'
+              && state.filter.value.toLowerCase() === fromTag.toLowerCase()) {
+              state.filter = { type: '', value: '' };
             }
             if (els.tagManageTo) els.tagManageTo.value = '';
             if (els.tagManageFrom) els.tagManageFrom.value = '';
@@ -5926,7 +6223,26 @@
         if (els.userDisplayMode) els.userDisplayMode.addEventListener('change', changeUserDisplayMode);
         if (els.search) els.search.addEventListener('input', renderEntries);
         if (els.sortMode) els.sortMode.addEventListener('change', renderEntries);
-        if (els.tagFilter) els.tagFilter.addEventListener('change', changeTagFilter);
+        if (els.filterInput) {
+          els.filterInput.addEventListener('focus', () => openFilterListbox(els.filterInput.value));
+          els.filterInput.addEventListener('input', handleFilterInput);
+          els.filterInput.addEventListener('keydown', handleFilterKeydown);
+          els.filterInput.addEventListener('blur', () => {
+            // Delay so a click on an option registers before the list closes.
+            window.setTimeout(() => { closeFilterListbox(); syncFilterInputDisplay(); }, 150);
+          });
+        }
+        if (els.filterListbox) {
+          els.filterListbox.addEventListener('mousedown', event => {
+            const option = event.target.closest('.filter-option');
+            if (!option) return;
+            event.preventDefault();
+            setActiveFilter(option.dataset.type, option.dataset.value);
+          });
+        }
+        if (els.filterClearBtn) {
+          els.filterClearBtn.addEventListener('click', clearActiveFilter);
+        }
         if (els.specialDates) els.specialDates.addEventListener('change', changeSpecialDateSelection);
         if (els.entryTag) els.entryTag.addEventListener('keydown', event => handleTagAutocompleteKeydown(event, els.entryTag));
         if (els.renameTagBtn) els.renameTagBtn.addEventListener('click', renameSelectedTag);

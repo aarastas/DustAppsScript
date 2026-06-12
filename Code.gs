@@ -12,8 +12,8 @@ const PHOTO_FOLDER_NAME = 'Dust Photos';
 const JOURNAL_HEADER = ['Timestamp', 'Content', 'Location', 'Date', 'Modified', 'GPSCoordinate', 'Photo', 'Tag'];
 const PHOTO_COLUMN_INDEX = 7;
 const TAG_COLUMN_INDEX = 8;
-const CODE_VERSION = '1.40'; // Version 1.40: Added adventure mode with gated death logic.
-const CODE_CHANGELOG = 'v1.40 | Code.gs | Added adventure mode with gated death logic.';
+const CODE_VERSION = '1.41'; // Version 1.41: doGet falls back to the journal when an optional mode template is missing; getTetrisHtml guarded against missing file.
+const CODE_CHANGELOG = 'v1.41 | Code.gs | doGet falls back to the journal when an optional mode template is missing; getTetrisHtml guarded against missing file.';
 const ADVENTURE_STATE_PREFIX = 'adventure-state-';
 const ADVENTURE_DEFAULT_GENRE = 'fantasy';
 const ADVENTURE_DEFAULT_PREMISE = "An endless story where the user's decisions shape survival, alliances, and consequences.";
@@ -44,21 +44,42 @@ const DEFAULT_SPECIAL_DATE_ROWS = [
 
 function doGet(e) {
   const mode = String(e && e.parameter && e.parameter.mode ? e.parameter.mode : '').trim().toLowerCase();
-  if (mode === 'adventure') {
+  if (mode === 'adventure' && htmlFileExists_('Adventure')) {
     return HtmlService.createHtmlOutputFromFile('Adventure')
       .setTitle('Adventure Story')
       .setFaviconUrl('https://raw.githubusercontent.com/aarastas/DustAppsScript/main/favicon-32x32.png')
       .addMetaTag('viewport', 'width=device-width, initial-scale=1, viewport-fit=cover');
   }
 
+  // Falls back to the journal when an optional mode template (e.g. Adventure)
+  // is not present in the project, so the user never sees a raw error page.
   return HtmlService.createHtmlOutputFromFile('Index')
     .setTitle('Dust Journal')
     .setFaviconUrl('https://raw.githubusercontent.com/aarastas/DustAppsScript/main/favicon-32x32.png')
     .addMetaTag('viewport', 'width=device-width, initial-scale=1, viewport-fit=cover');
 }
 
+// Returns true only when an HTML file with the given name exists in the
+// project. Apps Script has no direct "file exists" API, so we attempt to
+// create the output and treat a throw as "missing".
+function htmlFileExists_(name) {
+  try {
+    HtmlService.createHtmlOutputFromFile(name);
+    return true;
+  } catch (error) {
+    return false;
+  }
+}
+
 function getTetrisHtml() {
-  return HtmlService.createTemplateFromFile('Tetris').evaluate().getContent();
+  if (!htmlFileExists_('Tetris')) {
+    return '';
+  }
+  try {
+    return HtmlService.createTemplateFromFile('Tetris').evaluate().getContent();
+  } catch (error) {
+    return '';
+  }
 }
 
 function getAppData(referenceDateInput, clientMeta) {

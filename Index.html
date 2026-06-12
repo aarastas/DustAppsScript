@@ -3,6 +3,7 @@
   <head>
     <base target="_top">
     <!-- Version policy: bump the Index.html version comment here and the matching INDEX_VERSION constant in this file whenever this file changes. -->
+    <!-- Version 1.95: Arcade storage falls back to in-memory when localStorage is unavailable so best score and game selection persist within a session. -->
     <!-- Version 1.94: Scale PAC-MAN canvas and wall styling closer to the reference screenshot. -->
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
     <meta name="apple-mobile-web-app-capable" content="yes">
@@ -1242,8 +1243,8 @@
 
       <footer class="dust-footer">
         <div class="version-stack">
-      <strong>Code.gs <span id="codeVersionLabel">1.40</span></strong>
-      <strong>Index.html <span id="indexVersionLabel">1.94</span></strong>
+      <strong>Code.gs <span id="codeVersionLabel">1.41</span></strong>
+      <strong>Index.html <span id="indexVersionLabel">1.95</span></strong>
         </div>
       </footer>
     </main>
@@ -1307,8 +1308,8 @@
         renderToken: 0,
       };
 
-      const INDEX_VERSION = '1.94';
-      const INDEX_CHANGELOG = 'v1.94 | Index.html | Scale PAC-MAN canvas and wall styling closer to the reference screenshot.';
+      const INDEX_VERSION = '1.95';
+      const INDEX_CHANGELOG = 'v1.95 | Index.html | Arcade storage falls back to in-memory when localStorage is unavailable so best score and game selection persist within a session.';
       const TETRIS_BEST_SCORE_KEY = 'dust-tetris-best-score';
       const TETRIS_BOARD_COLS = 10;
       const TETRIS_BOARD_ROWS = 20;
@@ -1780,9 +1781,7 @@
       function selectArcadeGame(gameKey) {
         if (!arcadeGameDefinitions[gameKey]) return;
         arcadeLauncherState.selectedGame = gameKey;
-        try {
-          localStorage.setItem('dust-arcade-selected-game', gameKey);
-        } catch (error) {}
+        safeStorageSet('dust-arcade-selected-game', gameKey);
         updateArcadeLauncherView();
       }
 
@@ -1876,12 +1875,10 @@
           els.tetrisHost.innerHTML = createArcadeLauncherMarkup();
         }
         initArcadeLauncherDom();
-        try {
-          const stored = localStorage.getItem('dust-arcade-selected-game');
-          if (stored && arcadeGameDefinitions[stored]) {
-            arcadeLauncherState.selectedGame = stored;
-          }
-        } catch (error) {}
+        const stored = safeStorageGet('dust-arcade-selected-game');
+        if (stored && arcadeGameDefinitions[stored]) {
+          arcadeLauncherState.selectedGame = stored;
+        }
         bindArcadeLauncherControls();
         updateArcadeLauncherView();
         setStatus('');
@@ -1940,19 +1937,40 @@
         ].join('');
       }
 
-      function readStoredNumber(key, fallback) {
+      // Safe key/value storage. localStorage can throw or be unavailable in the
+      // sandboxed Apps Script iframe (e.g. iOS private mode, blocked storage).
+      // When that happens we fall back to an in-memory map so values still
+      // persist for the current session instead of silently resetting.
+      const memoryStore = {};
+      function safeStorageGet(key) {
         try {
-          const parsed = Number(localStorage.getItem(key));
-          return Number.isFinite(parsed) ? parsed : fallback;
-        } catch (error) {
+          const value = localStorage.getItem(key);
+          if (value !== null && value !== undefined) {
+            return value;
+          }
+        } catch (error) {}
+        return Object.prototype.hasOwnProperty.call(memoryStore, key) ? memoryStore[key] : null;
+      }
+
+      function safeStorageSet(key, value) {
+        const stringValue = String(value);
+        memoryStore[key] = stringValue;
+        try {
+          localStorage.setItem(key, stringValue);
+        } catch (error) {}
+      }
+
+      function readStoredNumber(key, fallback) {
+        const raw = safeStorageGet(key);
+        if (raw === null) {
           return fallback;
         }
+        const parsed = Number(raw);
+        return Number.isFinite(parsed) ? parsed : fallback;
       }
 
       function writeStoredNumber(key, value) {
-        try {
-          localStorage.setItem(key, String(value));
-        } catch (error) {}
+        safeStorageSet(key, value);
       }
 
       function initTetrisDom() {

@@ -3,6 +3,7 @@
   <head>
     <base target="_top">
     <!-- Version policy: bump the Index.html version comment here and the matching INDEX_VERSION constant in this file whenever this file changes. -->
+    <!-- Version 1.97: Confirm before deleting a tag or special date; warn before discarding an unsaved entry draft on reload/close. -->
     <!-- Version 1.96: Unified searchable tag/location filter combobox; tag and location chips are clickable to filter. -->
     <!-- Version 1.95: Arcade storage falls back to in-memory when localStorage is unavailable so best score and game selection persist within a session. -->
     <!-- Version 1.94: Scale PAC-MAN canvas and wall styling closer to the reference screenshot. -->
@@ -1364,7 +1365,7 @@
       <footer class="dust-footer">
         <div class="version-stack">
       <strong>Code.gs <span id="codeVersionLabel">1.41</span></strong>
-      <strong>Index.html <span id="indexVersionLabel">1.96</span></strong>
+      <strong>Index.html <span id="indexVersionLabel">1.97</span></strong>
         </div>
       </footer>
     </main>
@@ -1430,8 +1431,8 @@
         renderToken: 0,
       };
 
-      const INDEX_VERSION = '1.96';
-      const INDEX_CHANGELOG = 'v1.96 | Index.html | Unified searchable tag/location filter combobox; tag and location chips are clickable to filter.';
+      const INDEX_VERSION = '1.97';
+      const INDEX_CHANGELOG = 'v1.97 | Index.html | Confirm before deleting a tag or special date; warn before discarding an unsaved entry draft on reload/close.';
       const TETRIS_BEST_SCORE_KEY = 'dust-tetris-best-score';
       const TETRIS_BOARD_COLS = 10;
       const TETRIS_BOARD_ROWS = 20;
@@ -5804,6 +5805,17 @@
         });
       }
 
+      // True when the composer holds text the user hasn't saved yet. Used to
+      // warn before an accidental reload/close would discard the draft.
+      function composerHasDraft() {
+        const text = els.contents ? els.contents.value.trim() : '';
+        // Ignore the easter-egg phrases so they don't trigger a false warning.
+        if (text === TETRIS_TRIGGER_PHRASE || text === 'Joshua?') {
+          return false;
+        }
+        return !!text;
+      }
+
       async function submitEntry() {
         try {
           const contents = els.contents.value.trim();
@@ -5954,6 +5966,14 @@
         const fromTag = normalizeTagValue(els.tagManageFrom ? els.tagManageFrom.value : '');
         if (!fromTag) {
           setStatus('Select a tag to delete.');
+          return;
+        }
+        const affected = (state.allEntries || []).filter(entry =>
+          getEntryTags(entry).some(tag => tag.toLowerCase() === fromTag.toLowerCase())
+        ).length;
+        const countText = affected === 1 ? '1 entry' : `${affected} entries`;
+        if (!window.confirm(`Delete the tag "${fromTag}"?\n\nThis removes it from ${countText} and cannot be undone.`)) {
+          setStatus('');
           return;
         }
         setStatus('Deleting tag...');
@@ -6192,6 +6212,12 @@
           setStatus('Select a special date row to delete.');
           return;
         }
+        const description = describeSpecialDate(selected);
+        const rowName = description ? `${selected.label} (${description})` : selected.label;
+        if (!window.confirm(`Delete the special date "${rowName}"?\n\nThis cannot be undone.`)) {
+          setStatus('');
+          return;
+        }
         setLoading(els.deleteSpecialDateBtn, true, 'Deleting...');
         setLoading(els.saveSpecialBtn, true, 'Delete date');
         setStatus('Deleting special date...');
@@ -6256,6 +6282,14 @@
         });
         const refreshPreview = () => changePreviewDate(els.previewDate.value);
         els.previewDate.addEventListener('change', refreshPreview);
+        // Warn before discarding an unsaved entry on reload/close.
+        window.addEventListener('beforeunload', event => {
+          if (composerHasDraft()) {
+            event.preventDefault();
+            event.returnValue = '';
+            return '';
+          }
+        });
       }
 
       wireEvents();
